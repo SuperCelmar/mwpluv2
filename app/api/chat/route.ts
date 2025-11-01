@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const N8N_WEBHOOK_URL = 'https://n8n.automationdfy.com/webhook/api/chat';
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 
+  'https://n8n.automationdfy.com/webhook/api/chat';
 
 export async function POST(req: NextRequest) {
   try {
