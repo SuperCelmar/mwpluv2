@@ -80,7 +80,7 @@ export async function enrichResearchWithGeoData(
   console.log('[ENRICHMENT] Update data:', {
     research_id: researchId,
     city_id: cityId,
-    zoning_id: zoningId,
+    zone_id: zoneId,
     geocoded_address: communeName,
   });
 
@@ -88,7 +88,7 @@ export async function enrichResearchWithGeoData(
     .from('v2_research_history')
     .update({
       city_id: cityId,
-      zoning_id: zoningId,
+      zone_id: zoneId,
       geocoded_address: communeName,
     })
     .eq('id', researchId);
@@ -209,36 +209,77 @@ export function mapTypezoneToZoningName(typezone: string | undefined): string {
 
 /**
  * Get or create zoning for a city
- * Uses typezone from Carto API to determine appropriate zoning name, or RNU if applicable
+ * Uses typezone from Carto API to map to zonings.code, or RNU if applicable
  */
 export async function getOrCreateZoning(cityId: string, typezone?: string, isRnu: boolean = false): Promise<string> {
   console.log('[ENRICHMENT] getOrCreateZoning called:', { cityId, typezone, isRnu });
 
-  // If RNU, use "RNU" as zoning name, otherwise use typezone mapping
-  const zoningName = isRnu ? 'RNU' : mapTypezoneToZoningName(typezone);
-  console.log('[ENRICHMENT] Zoning name determined:', zoningName);
+  // Determine code and name
+  let zoningCode: string | null = null;
+  let zoningName: string;
+  
+  if (isRnu) {
+    zoningCode = 'RNU';
+    zoningName = 'RNU';
+  } else if (typezone) {
+    // Use typezone directly as code (U, AU, N, A, etc.)
+    zoningCode = typezone.toUpperCase();
+    // Map code to full name for display
+    zoningName = mapTypezoneToZoningName(typezone);
+  } else {
+    // Fallback: no code, just use name
+    zoningName = mapTypezoneToZoningName(typezone);
+  }
 
-  // Check if zoning exists with this name and city_id
+  console.log('[ENRICHMENT] Zoning code and name determined:', { code: zoningCode, name: zoningName });
+
+  // Check if zoning exists by code (if we have one) and city_id
+  // This is the key change: lookup by code instead of name
   console.log('[ENRICHMENT] Looking up existing zoning');
-  const { data: existingZoning } = await supabase
+  let query = supabase
     .from('zonings')
     .select('id')
-    .eq('city_id', cityId)
-    .eq('name', zoningName)
-    .maybeSingle();
+    .eq('city_id', cityId);
+  
+  if (zoningCode) {
+    // Look up by code first (preferred method)
+    query = query.eq('code', zoningCode);
+  } else {
+    // Fallback to name if no code
+    query = query.eq('name', zoningName);
+  }
+  
+  const { data: existingZoning } = await query.maybeSingle();
 
   if (existingZoning) {
     console.log('[ENRICHMENT] Existing zoning found, zoning_id:', existingZoning.id);
+    
+    // Update code if it's missing and we have one
+    if (zoningCode) {
+      const { error: updateError } = await supabase
+        .from('zonings')
+        .update({ code: zoningCode })
+        .eq('id', existingZoning.id)
+        .is('code', null);
+      
+      if (updateError) {
+        console.warn('[ENRICHMENT] Failed to update zoning code:', updateError);
+      } else {
+        console.log('[ENRICHMENT] Updated zoning code to:', zoningCode);
+      }
+    }
+    
     return existingZoning.id;
   }
 
-  // Create new zoning
+  // Create new zoning with both code and name
   console.log('[ENRICHMENT] Creating new zoning');
   const description = isRnu 
     ? `Règlement National d'Urbanisme` 
     : `Plan Local d'Urbanisme`;
   console.log('[ENRICHMENT] New zoning data:', {
     city_id: cityId,
+    code: zoningCode,
     name: zoningName,
     description,
   });
@@ -247,6 +288,7 @@ export async function getOrCreateZoning(cityId: string, typezone?: string, isRnu
     .from('zonings')
     .insert({
       city_id: cityId,
+      code: zoningCode,
       name: zoningName,
       description: description,
     })
@@ -335,30 +377,30 @@ export async function getOrCreateZone(
 }
 
 /**
- * Check for existing research history with matching user_id, city_id, and zoning_id
+ * Check for existing research history with matching user_id, city_id, and zone_id
  * Returns conversation_id if a duplicate is found, null otherwise
  */
 export async function checkExistingResearch(
   userId: string,
   cityId: string,
-  zoningId: string | null
+  zoneId: string | null
 ): Promise<string | null> {
-  console.log('[ENRICHMENT] checkExistingResearch called:', { userId, cityId, zoningId });
+  console.log('[ENRICHMENT] checkExistingResearch called:', { userId, cityId, zoneId });
 
-  // Build query - must match user_id, city_id, and zoning_id if provided
+  // Build query - must match user_id, city_id, and zone_id if provided
   let query = supabase
     .from('v2_research_history')
     .select('conversation_id, id, created_at')
     .eq('user_id', userId)
     .eq('city_id', cityId);
 
-  // If zoning_id is null, we should still check (maybe edge case)
-  // If zoning_id is provided, match it
-  if (zoningId !== null) {
-    query = query.eq('zoning_id', zoningId);
+  // If zone_id is null, we should still check (maybe edge case)
+  // If zone_id is provided, match it
+  if (zoneId !== null) {
+    query = query.eq('zone_id', zoneId);
   } else {
-    // For cases where zoning_id is null, check for null zoning_id
-    query = query.is('zoning_id', null);
+    // For cases where zone_id is null, check for null zone_id
+    query = query.is('zone_id', null);
   }
 
   const { data: existingResearch, error } = await query
@@ -377,6 +419,6 @@ export async function checkExistingResearch(
     return found.conversation_id;
   }
 
-  console.log('[ENRICHMENT] No existing research found for user, city, and zoning');
+  console.log('[ENRICHMENT] No existing research found for user, city, and zone');
   return null;
 }

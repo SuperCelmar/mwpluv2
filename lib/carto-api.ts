@@ -129,6 +129,7 @@ export async function fetchZones(params: {
   }
   
   const data = await response.json();
+  console.log('[API_CALL] fetchZones JSON response:', JSON.stringify(data, null, 2));
   const zones = data.features || [];
   console.log('[API_CALL] fetchZones completed, zones count:', zones.length);
   
@@ -172,6 +173,7 @@ export async function fetchZoneUrba(params: {
   }
   
   const data = await response.json();
+  console.log('[API_CALL] fetchZoneUrba JSON response:', JSON.stringify(data, null, 2));
   const zones = data.features || [];
   console.log('[API_CALL] fetchZoneUrba completed, zones count:', zones.length);
   
@@ -197,6 +199,7 @@ export async function fetchDocuments(insee_code: string): Promise<CartoDocument[
   }
   
   const data = await response.json();
+  console.log('[API_CALL] fetchDocuments JSON response:', JSON.stringify(data, null, 2));
   const documents = data.features || [];
   console.log('[API_CALL] fetchDocuments completed, documents count:', documents.length);
   
@@ -256,6 +259,7 @@ export async function fetchMunicipality(
     }
     
     const data = await response.json();
+    console.log('[API_CALL] fetchMunicipality JSON response (INSEE):', JSON.stringify(data, null, 2));
     const municipality = data.features?.[0] || null;
     
     if (municipality) {
@@ -282,6 +286,7 @@ export async function fetchMunicipality(
     }
     
     const data = await response.json();
+    console.log('[API_CALL] fetchMunicipality JSON response (coordinates):', JSON.stringify(data, null, 2));
     const municipality = data.features?.[0] || null;
     
     if (municipality) {

@@ -127,10 +127,10 @@ export default function Home() {
         }
       }
 
-      // Step 4: Check for existing research with same user_id, city_id, and zoning_id
+      // Step 4: Check for existing research with same user_id, city_id, and zone_id
       console.log('[DUPLICATE_CHECK] Step 4: Checking for existing research');
       if (cityId) {
-        const existingConversationId = await checkExistingResearch(userId, cityId, zoningId);
+        const existingConversationId = await checkExistingResearch(userId, cityId, zoneId);
         
         if (existingConversationId) {
           console.log('[DUPLICATE_CHECK] Existing conversation found, navigating to:', existingConversationId);
@@ -152,7 +152,7 @@ export default function Home() {
           geo_lon: lon || null,
           geo_lat: lat || null,
           city_id: cityId,
-          zoning_id: zoningId,
+          zone_id: zoneId,
           geocoded_address: municipality?.properties.name.toLowerCase() || address.properties.city.toLowerCase(),
           success: true,
         })

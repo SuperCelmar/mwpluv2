@@ -36,6 +36,7 @@ export type Zoning = {
   id: string;
   city_id: string;
   name: string;
+  code: string | null;  // Short code from Carto API typezone (U, AU, N, A, etc.)
   description: string | null;
   created_at: string;
   updated_at: string;
@@ -212,7 +213,7 @@ export type V2ResearchHistory = {
   search_intent: string | null;
   geocoded_address: string | null;
   city_id: string | null;
-  zoning_id: string | null;
+  zone_id: string | null;
   geo_lon: number | null;
   geo_lat: number | null;
   documents_found: string[] | null;  // UUID array

@@ -1,6 +1,167 @@
 # Changelog
 
+## 2025-11-02 (Fixed Enrichment Flow Order - fetchZoneUrba First)
+
+### Fixed
+- **Enrichment Flow Order**: Refactored `enrichConversationData` to call `fetchZoneUrba` FIRST before any other API calls
+  - **Step 1**: `fetchZoneUrba` with GPS coordinates → gets `libelle`, `typezone`, and `MultiPolygon` geometry
+  - **Step 2**: City database check/creation (using context metadata)
+  - **Step 3**: Zones/zoning database check using API data (libelle → zones.name, typezone → zonings.code)
+  - **Step 4**: Database check for existing analysis in `documents` table by `zone_id`
+  - **Step 5** (conditional): Only call `fetchMunicipality` and `fetchDocument` if:
+    - No analysis exists in database AND
+    - We have `zone_id`/`zoning_id` (zone is covered)
+  - Removed duplicate document retrieval phase that was happening after map loading
+
+### Changed
+- **Removed Early API Calls**: 
+  - `fetchMunicipality` is no longer called in Step 1 - moved to Step 5 (conditional)
+  - `fetchDocument` is no longer called in Step 3 - moved to Step 5 (conditional)
+- **Smart Analysis Check**: System now checks database for existing analysis BEFORE calling any external APIs
+- **Optimized Flow**: When analysis exists in database, municipality and document APIs are skipped entirely
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx` - Refactored `enrichConversationData` function with correct API call order
+
+
 All notable changes to this project will be documented in this file.
+
+## 2025-01-XX - Optimized Redundant API Calls and Flow
+
+### Fixed
+- **Removed Redundant API Calls**: Eliminated multiple redundant calls to `fetchZoneUrba` API
+  - **Problem**: The API was called 3-4 times for the same zone data, causing unnecessary delays (5+ seconds) and increased API load
+  - **Root Cause**: 
+    - Step 4 made an API call to get libelle
+    - Post-enrichment section made another call
+    - Third location (when only zoningId known) made another call
+    - MAP_ARTIFACT_START made a fourth call just to get geometry
+  - **Solution**: 
+    - Added cache variables (`cachedZonesFromAPI`, `cachedZoneGeometry`) at the start of `enrichConversationData`
+    - First API call caches the response (zones and geometry)
+    - All subsequent sections check cache first before making API calls
+    - Geometry is extracted from cached response instead of making separate calls
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines ~283-285, ~437-499, ~609-675, ~749-813, ~883-953)
+
+- **Reduced Artificial Delay**: Reduced map loading delay from 2000ms to 200ms
+  - **Problem**: 2-second artificial delay was slowing down document retrieval unnecessarily
+  - **Solution**: Reduced delay to 200ms (10x faster) - still allows UI to update smoothly but doesn't block document retrieval
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (line ~968)
+  - **Benefits**: Documents now load almost immediately after zone data is retrieved instead of waiting 5+ seconds
+
+- **Geometry Caching**: Geometry is now cached and reused instead of fetched separately
+  - Geometry extracted from first API call and stored in `cachedZoneGeometry`
+  - MAP_ARTIFACT_START now uses cached geometry instead of making API call
+  - Geometry saved to database when zone is created/updated
+  - **Benefits**: Faster map loading, reduced API calls
+
+## 2025-01-XX - Fixed Zone Selection Logic in Document Query
+
+### Fixed
+- **Zone Selection by Libelle**: Fixed zone selection logic to always filter by libelle (zone name) when querying zones from the database
+  - **Problem**: When multiple zones exist in the same zoning (e.g., "UC1" and "UCRU11"), the code was selecting the first zone returned by the database without filtering by libelle, causing incorrect document retrieval
+  - **Root Cause**: Three locations in `app/chat/[conversation_id]/page.tsx` were fetching zones using `.limit(1)` without filtering by `zones.name`:
+    - Lines ~437-450: Initial zone fetching during enrichment
+    - Lines ~548-560: Post-enrichment zone fetching
+    - Lines ~607-624: Zone fetching when only zoningId is known
+  - **Solution**: 
+    - Always fetch from API first when coordinates are available to get the correct libelle
+    - Filter database queries by libelle (`zones.name`) to ensure the correct zone is selected
+    - Added comprehensive validation logging before document queries to detect zone/libelle mismatches
+    - Falls back gracefully when libelle is not available (takes first zone but logs a warning)
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines ~420-526, ~577-673, ~694-771, ~889-945)
+  - **Benefits**: 
+    - Ensures correct zone is selected when multiple zones exist in the same zoning
+    - Prevents document retrieval for wrong zones (e.g., UCRU11 instead of UC1)
+    - Provides validation logging to catch future issues
+
+## 2025-01-XX - Added Zonings Code Column and Fixed Mapping Logic
+
+### Added
+- **Zonings Code Column**: Added `code` column to `zonings` table for direct mapping from Carto API `typezone` field
+  - Migration: `supabase/migrations/20251102000014_add_code_to_zonings.sql`
+  - Maps `typezone` values (U, AU, N, A) directly to `zonings.code`
+  - Existing zonings populated with codes based on names
+  - Index created on `code` column for performance
+
+### Fixed
+- **Mapping Logic**: Updated to use `typezone → zonings.code` instead of `typezone → zonings.name`
+  - `features[].properties.typezone` → `zonings.code` (new mapping)
+  - `features[].properties.libelle` → `zones.name` (already correct ✓)
+  - Updated `getOrCreateZoning()` in `lib/geo-enrichment.ts` to:
+    - Look up existing zonings by `code` instead of `name`
+    - Create new zonings with both `code` and `name`
+    - Update existing zonings with missing codes
+  - Updated `Zoning` type in `lib/supabase.ts` to include `code` field
+
+- **Document Query Simplification**: Simplified document lookup to use BOTH `zones.id` AND `zonings.id`
+  - **Problem**: Previous implementation used complex libelle lookup
+  - **Solution**: After mapping operations, we have both `zones.id` and `zonings.id`, so query directly:
+    - `documents WHERE zone_id = zones.id AND zoning_id = zonings.id`
+  - **Benefits**: 
+    - Simpler, more direct query
+    - More precise matching (both zone and zoning must match)
+    - No need for additional zone lookup by name
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines ~616-647)
+
+## 2025-01-XX - Fixed Document Query and Reverted v2_research_history Migration
+
+### Fixed
+- **Document Query by Zone Name**: Fixed document lookup to filter by `zones.name` (libelle) instead of just `zone_id` UUID (NOTE: This was later simplified in the next update)
+  - **Problem**: When zone-urba API returns `libelle = "UA1"`, the system was getting documents for wrong zones (e.g., "UCRU11" instead of "UA1")
+  - **Root Cause**: Document query was using `zone_id` UUID which could match any zone in the same zoning, not the specific zone matching the libelle value
+  - **Solution**: 
+    - Added `zoneLibelle` to zoneData state to store the libelle value (e.g., "UA1")
+    - Modified document query to first find the zone_id that matches the libelle within the zoning
+    - Query documents using the specific zone_id that matches the libelle
+    - Falls back to zone_id or zoning_id if libelle is not available
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines ~42-47, ~421-433, ~531-550, ~616-671)
+
+- **Reverted v2_research_history Migration**: Reverted the change from `zone_id` to `zoning_id` in `v2_research_history` table
+  - **Problem**: Migration `20251102000010_replace_zone_id_with_zoning_id.sql` changed the schema to use `zoning_id`, but we need `zone_id` to store specific zone information
+  - **Solution**: Created migration `20251102000013_revert_zoning_id_to_zone_id.sql` to:
+    - Drop `zoning_id` column and its index
+    - Add back `zone_id` column with foreign key to `zones(id)`
+    - Add index on `zone_id`
+  - **Code Updates**:
+    - `lib/supabase.ts`: Updated `V2ResearchHistory` type - changed `zoning_id` back to `zone_id`
+    - `lib/geo-enrichment.ts`: 
+      - `enrichResearchWithGeoData()`: Uses `zone_id` instead of `zoning_id` when updating research_history
+      - `checkExistingResearch()`: Changed parameter from `zoningId` to `zoneId`, queries by `zone_id` instead of `zoning_id`
+    - `app/page.tsx`: Uses `zone_id` for research_history operations
+    - `app/chat/[conversation_id]/page.tsx`: Uses `zone_id` when updating research_history, reads `zone_id` from research instead of `zoning_id`
+  - **Files Modified**: 
+    - `supabase/migrations/20251102000013_revert_zoning_id_to_zone_id.sql` (new)
+    - `lib/supabase.ts`
+    - `lib/geo-enrichment.ts`
+    - `app/page.tsx`
+    - `app/chat/[conversation_id]/page.tsx`
+
+### Technical Details
+- Document query now correctly matches documents to specific zones by libelle value (e.g., "UA1")
+- Research history now stores `zones.id` instead of `zoning.id` for more precise zone tracking
+- Maintains backward compatibility with fallback queries when libelle is not available
+- Zone libelle is fetched from database when zoneId is available and stored in zoneData state
+
+## 2025-01-XX - Added JSON Console Logs for API Responses
+
+### Debugging Enhancement
+
+Added comprehensive JSON console logging for all Carto API calls to help verify data connection and response structure, especially for the zone-urba API which provides zone and zoning information.
+
+### Changes Made
+
+#### lib/carto-api.ts - Added JSON Response Logging
+- **fetchZoneUrba**: Added `console.log('[API_CALL] fetchZoneUrba JSON response:', JSON.stringify(data, null, 2))` after parsing response
+  - This is the primary API that returns zone and zoning data needed for database connection verification
+- **fetchZones**: Added JSON response logging with formatted output
+- **fetchDocuments**: Added JSON response logging with formatted output  
+- **fetchMunicipality**: Added JSON response logging for both code paths (INSEE code and coordinates)
+- **fetchCartoAPIs**: Already had JSON logging for zone-urba (line 36), no changes needed
+
+All JSON logs use `JSON.stringify(data, null, 2)` for readable formatted output with consistent `[API_CALL]` prefix for easy filtering in browser console.
+
+This enables verification that the API responses contain the correct zone and zoning data structure before it's processed and stored in the database.
 
 ## 2025-11-02 (Late Evening) - Removed Tabs Component & Simplified Document Viewer
 
