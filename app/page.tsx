@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { InitialAddressInput } from '@/components/InitialAddressInput';
+import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
 import { AddressSuggestion } from '@/lib/address-api';
 import { fetchMunicipality, fetchZoneUrba } from '@/lib/carto-api';
 import { getOrCreateCity, getOrCreateZoning, getOrCreateZone, checkExistingResearch } from '@/lib/geo-enrichment';
@@ -262,8 +263,15 @@ export default function Home() {
     );
   }
 
+  const handleNewConversation = () => {
+    // Already on home page, no action needed
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-white">
+      <ChatLeftSidebar
+        onNewConversation={handleNewConversation}
+      />
       <div className="flex-1 flex items-center justify-center">
         <InitialAddressInput
           onAddressSubmit={handleAddressSubmit}

@@ -11,31 +11,31 @@ import { ChatRightPanel } from '@/components/ChatRightPanel';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
 import { ChatInputField } from '@/components/ChatInputField';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
-import { Menu, User, Loader2 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Loader2 } from 'lucide-react';
+import { InlineArtifactCard } from '@/components/InlineArtifactCard';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+type ArtifactPhase = 'idle' | 'loading' | 'ready';
 
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [messages, setMessages] = useState<V2Message[]>([]);
   const [conversation, setConversation] = useState<V2Conversation | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [artifactsLoading, setArtifactsLoading] = useState(true);
+  const [introStatus, setIntroStatus] = useState<{ map: ArtifactPhase; document: ArtifactPhase }>({
+    map: 'idle',
+    document: 'idle',
+  });
+  const [showIntro, setShowIntro] = useState(false);
   const [isFirstMessage, setIsFirstMessage] = useState(true);
   const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
   const [enrichmentStep, setEnrichmentStep] = useState<'idle' | 'municipality' | 'city_check' | 'documents' | 'zones_check' | 'map_loading' | 'map_ready' | 'document_check' | 'complete'>('idle');
   const [enrichmentStatus, setEnrichmentStatus] = useState<string>('');
+  const [activeArtifactTab, setActiveArtifactTab] = useState<'document' | 'map'>('document');
   
   // Map and document state
   const [mapData, setMapData] = useState<{ lat: number; lon: number; zoneGeometry?: any; isLoading?: boolean } | null>(null);
@@ -44,9 +44,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     zoningId: null,
     cityId: null,
   });
+  const [documentData, setDocumentData] = useState<{ htmlContent: string | null; documentId: string | null }>({ htmlContent: null, documentId: null });
   
   // Guard to prevent re-execution of enrichment (handles React Strict Mode double-invoke)
   const enrichmentInProgressRef = useRef(false);
+  const introSequenceStartedRef = useRef(false);
 
   useEffect(() => {
     console.log('[CHAT_PAGE] Page initialized, conversation_id:', params.conversation_id);
@@ -54,10 +56,37 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   }, [params.conversation_id]);
 
   useEffect(() => {
-    if (conversation && conversation.document_count > 0) {
-      simulateArtifactLoading();
+    if (!conversation) return;
+    if (introSequenceStartedRef.current) return;
+    if (messages.length > 0) return;
+
+    startIntroSequence(conversation);
+  }, [conversation, messages]);
+
+  useEffect(() => {
+    if (!showIntro) return;
+    if (!researchContext) return;
+
+    const lat = researchContext.geo_lat;
+    const lon = researchContext.geo_lon;
+
+    if (lat === null || lat === undefined || lon === null || lon === undefined) {
+      return;
     }
-  }, [conversation]);
+
+    setMapData((prev) => {
+      if (prev && prev.lat === lat && prev.lon === lon) {
+        return prev;
+      }
+
+      return {
+        lat,
+        lon,
+        zoneGeometry: prev?.zoneGeometry,
+        isLoading: introStatus.map !== 'ready',
+      };
+    });
+  }, [researchContext, showIntro, introStatus.map]);
 
   const checkAuthAndLoadConversation = async () => {
     console.log('[CHAT_PAGE] Checking authentication and loading conversation');
@@ -97,6 +126,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
       console.log('[CHAT_PAGE] Conversation loaded successfully, conversation_id:', conv.id);
       setConversation(conv);
+      introSequenceStartedRef.current = false;
+      setIntroStatus({ map: 'idle', document: 'idle' });
+      setShowIntro(false);
+      setActiveArtifactTab('document');
+      setMapData(null);
 
       // Load messages for this conversation
       console.log('[CHAT_PAGE] Loading messages for conversation');
@@ -115,8 +149,13 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         console.log('[CHAT_PAGE] Messages loaded successfully, count:', messagesData.length);
         setMessages(messagesData);
         setIsFirstMessage(false);
+        setArtifactsLoading(false);
+        setIntroStatus({ map: 'ready', document: 'ready' });
       } else {
         console.log('[CHAT_PAGE] No messages found for conversation');
+        setMessages([]);
+        setArtifactsLoading(true);
+        setIntroStatus({ map: 'loading', document: 'idle' });
       }
 
       // Load research history for context
@@ -158,13 +197,46 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   };
 
-  const simulateArtifactLoading = async () => {
+  const startIntroSequence = (conv: V2Conversation) => {
+    if (introSequenceStartedRef.current) {
+      return;
+    }
+
+    introSequenceStartedRef.current = true;
+
+    const contextMetadata = conv.context_metadata as any;
+    const lon = researchContext?.geo_lon ?? contextMetadata?.geocoded?.lon ?? null;
+    const lat = researchContext?.geo_lat ?? contextMetadata?.geocoded?.lat ?? null;
+
+    setIntroStatus({ map: 'loading', document: 'idle' });
+    setActiveArtifactTab('document');
+    setRightPanelOpen(true);
     setArtifactsLoading(true);
-    // Artifact loading state is now managed locally since it's not in the schema
-    setTimeout(() => {
+    setShowIntro(false);
+
+    if (lon !== null && lat !== null) {
+      setMapData({
+        lat,
+        lon,
+        zoneGeometry: undefined,
+        isLoading: true,
+      });
+    }
+
+    const runSequence = async () => {
+      await sleep(1200);
+
+      setIntroStatus({ map: 'ready', document: 'loading' });
+      setMapData((prev) => (prev ? { ...prev, isLoading: false } : prev));
       setArtifactsLoading(false);
-      setRightPanelOpen(true);
-    }, 3000);
+      setShowIntro(true);
+
+      await sleep(1200);
+
+      setIntroStatus({ map: 'ready', document: 'ready' });
+    };
+
+    runSequence();
   };
 
   const enrichConversationData = async (research: V2ResearchHistory, conv: V2Conversation) => {
@@ -574,8 +646,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             console.log('[DOCUMENT_DISPLAY] Full analysis available, document_id:', document.id);
             setEnrichmentStatus('Analyse trouvée ✓');
             
-            // TODO: Display analysis in right panel document tab
-            // For now, just mark as complete
+            setDocumentData({
+              htmlContent: document.html_content,
+              documentId: document.id
+            });
+            
             setEnrichmentStep('complete');
             setEnrichmentStatus('');
             setArtifactsLoading(false);
@@ -872,11 +947,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     router.push('/');
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -892,29 +962,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   return (
     <div className="flex h-screen overflow-hidden bg-white">
       <ChatLeftSidebar
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         onNewConversation={handleNewConversation}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="border-b bg-white px-4 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            {sidebarCollapsed && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSidebarCollapsed(false)}
-                  className="md:hidden"
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
-                <h1 className="text-xl font-bold text-gray-900 md:hidden">MWPLU</h1>
-              </>
-            )}
-          </div>
-
           <div className="flex-1 text-center">
             {conversation?.context_metadata?.initial_address && (
               <p className="text-sm text-gray-600 truncate">
@@ -922,21 +974,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
               </p>
             )}
           </div>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <User className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
-                Déconnexion
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </header>
 
         <div className="flex-1 flex overflow-hidden">
@@ -956,10 +993,12 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                     ) : (
                       <>
                         <div className="flex items-center justify-center gap-2">
-                          <span>⏳ Chargement du document PLU...</span>
+                          <span>{introStatus.map === 'ready' ? '✓' : '⏳'} Chargement de la carte...</span>
                         </div>
                         <div className="flex items-center justify-center gap-2">
-                          <span>⏳ Chargement de la carte cadastrale...</span>
+                          <span>
+                            {introStatus.document === 'ready' ? '✓' : introStatus.document === 'loading' ? '⏳' : '•'} Préparation du document PLU...
+                          </span>
                         </div>
                       </>
                     )}
@@ -969,8 +1008,42 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             ) : (
               <>
                 <ScrollArea className="flex-1">
-                  <div className="max-w-4xl mx-auto py-4">
-                    {messages.length === 0 ? (
+                  <div className="max-w-4xl mx-auto py-6 space-y-6">
+                    {showIntro && (
+                      <div data-testid="inline-artifact-intro" className="space-y-4 px-4">
+                        <ChatMessageBubble role="assistant" content="Carte chargée ✅" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <InlineArtifactCard
+                            testId="inline-artifact-card-map"
+                            title="Carte cadastrale"
+                            description="Visualisez la zone et les limites de la parcelle."
+                            status={introStatus.map}
+                            onOpen={() => {
+                              setRightPanelOpen(true);
+                              setActiveArtifactTab('map');
+                            }}
+                            kind="map"
+                          />
+                          <InlineArtifactCard
+                            testId="inline-artifact-card-document"
+                            title="Analyse PLU"
+                            description={
+                              introStatus.document === 'ready'
+                                ? 'Consultez la synthèse et le document officiel.'
+                                : 'Analyse en cours, nous préparons le document.'
+                            }
+                            status={introStatus.document}
+                            onOpen={() => {
+                              setRightPanelOpen(true);
+                              setActiveArtifactTab('document');
+                            }}
+                            kind="document"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {messages.length === 0 && introStatus.document === 'ready' ? (
                       <div className="text-center py-12 px-4">
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">
                           Vos documents sont prêts !
@@ -981,20 +1054,26 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                         </p>
                       </div>
                     ) : (
-                      messages.filter(msg => msg.role !== 'system').map((message) => (
-                        <ChatMessageBubble
-                          key={message.id}
-                          role={message.role as 'user' | 'assistant'}
-                          content={message.message}
-                        />
-                      ))
+                      messages
+                        .filter(msg => msg.role !== 'system')
+                        .map((message) => (
+                          <ChatMessageBubble
+                            key={message.id}
+                            role={message.role as 'user' | 'assistant'}
+                            content={message.message}
+                          />
+                        ))
                     )}
                   </div>
                 </ScrollArea>
 
                 <ChatInputField
                   onSend={handleSendMessage}
-                  disabled={sendingMessage || artifactsLoading}
+                  disabled={
+                    sendingMessage ||
+                    artifactsLoading ||
+                    introStatus.document !== 'ready'
+                  }
                 />
               </>
             )}
@@ -1004,6 +1083,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             isOpen={rightPanelOpen} 
             onClose={() => setRightPanelOpen(false)}
             mapProps={mapData || undefined}
+            activeTab={activeArtifactTab}
+            onTabChange={(tab) => setActiveArtifactTab(tab)}
+            documentHtml={documentData.htmlContent}
           />
         </div>
       </div>

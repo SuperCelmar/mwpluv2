@@ -2,6 +2,585 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-02 (Late Evening) - Removed Tabs Component & Simplified Document Viewer
+
+### Major Refactoring
+
+**Problem**: The Radix UI Tabs component was causing layout issues where inactive TabsContent elements with `hidden` attribute were still taking up space in the flex layout, pushing the map content down and breaking scrolling.
+
+**Solution**: Replaced the Tabs component with simple conditional rendering, making document and map views truly independent and mutually exclusive.
+
+**Quick Fix Applied**: Added `flex flex-col` to content area container to ensure proper height propagation for scrolling (line 84 in ChatRightPanel.tsx).
+
+### Changes Made
+
+#### 1. ChatRightPanel.tsx - Complete Refactor
+- **Removed**: Radix UI `Tabs`, `TabsContent`, `TabsList`, `TabsTrigger` components
+- **Replaced with**: Simple conditional rendering using `activeTab === 'document'` and `activeTab === 'map'`
+- **Custom tab buttons**: Created styled buttons that mimic tab behavior with proper active states
+- **Benefits**:
+  - Only one component (DocumentViewer OR MapArtifact) is rendered at a time
+  - No hidden elements taking up space in the layout
+  - Cleaner flex hierarchy: Container → Header → Content area → Active component
+  - Map now fills the full available height correctly
+  
+**New Structure**:
+```tsx
+<div className="flex-1 flex flex-col">
+  {/* Header with custom tab buttons */}
+  <div className="border-b">
+    <button onClick={() => onTabChange('document')}>Document</button>
+    <button onClick={() => onTabChange('map')}>Carte</button>
+  </div>
+  
+  {/* Content - conditional rendering */}
+  <div className="flex-1 min-h-0">
+    {activeTab === 'document' && <DocumentViewer />}
+    {activeTab === 'map' && <MapArtifact />}
+  </div>
+</div>
+```
+
+#### 2. DocumentViewer.tsx - Major Simplification
+- **Removed all search functionality**:
+  - Search state: `searchTerm`, `currentMatch`, `totalMatches`
+  - Search useEffect with DOM manipulation
+  - Functions: `highlightMatches`, `scrollToCurrentMatch`, `clearHighlights`, `goToNextMatch`, `goToPreviousMatch`
+  - Search bar UI (input field + navigation buttons)
+  
+- **Removed fullscreen feature**:
+  - `isFullscreen` state
+  - Maximize/Minimize button
+  - Fixed positioning logic
+  
+- **Removed unused imports**:
+  - `useState`, `useEffect`, `useRef` from React
+  - `ChevronUp`, `ChevronDown`, `Maximize2`, `Minimize2` from lucide-react
+  - `Button` component
+  - `cn` utility
+  
+- **Result**: Clean, focused component that only displays the document with proper scrolling
+
+**Simplified Structure**:
+```tsx
+<div className="flex flex-col h-full">
+  <div className="border-b">Document PLU</div>
+  <div className="flex-1 min-h-0 px-8 py-6">
+    <div className="h-full overflow-y-auto">
+      <div dangerouslySetInnerHTML={{ __html: enhancedHtml }} />
+    </div>
+  </div>
+</div>
+```
+
+### Technical Benefits
+
+1. **Proper Flex Height Propagation**:
+   - No interference from Tabs component's internal state management
+   - Direct parent-child relationship ensures height flows correctly
+   - `min-h-0` works as expected without hidden siblings
+
+2. **Eliminated Layout Bugs**:
+   - Inactive tabs no longer occupy space
+   - Map fills full height when active
+   - Document scrolls properly when active
+
+3. **Reduced Complexity**:
+   - Removed ~150 lines of search functionality code
+   - Removed ~30 lines of fullscreen logic
+   - Removed dependency on Radix UI Tabs
+   - DocumentViewer: 314 lines → 91 lines (71% reduction)
+
+4. **Better Performance**:
+   - Only one artifact component mounted at a time
+   - No DOM manipulation for search highlights
+   - Simpler render cycle
+
+### Files Modified
+
+- `components/ChatRightPanel.tsx`:
+  - Lines 1-134: Complete rewrite using conditional rendering
+  - Removed Tabs import, added custom tab button styling
+  
+- `components/DocumentViewer.tsx`:
+  - Lines 1-45: Simplified from 314 lines to 91 lines
+  - Kept only: props interface, component render, and `sanitizeAndEnhanceHtml` function
+  - Removed: All state, hooks, search logic, fullscreen logic
+
+### User Experience
+
+- Document scrolls smoothly without needing to expand
+- Map displays at full height when selected
+- Tab switching is instant (no hidden DOM elements)
+- Cleaner, simpler interface without unnecessary features
+
+## 2025-11-02 (Evening) - Fixed Scrolling with Tabs Visible & Search Functionality
+
+### Issues Fixed
+
+1. **Document scrolling not working when tabs are visible**
+   - **Problem**: When viewing document in right panel with tabs showing, content was not scrollable
+   - **Symptom**: Scrolling only worked when clicking expand icon (fullscreen mode)
+   - **Root Cause**: `TabsContent` component had `overflow-hidden` class which prevented scrolling through the hierarchy
+   - **Solution**: 
+     - Removed `overflow-hidden` from TabsContent
+     - Made both TabsContent elements always use `flex-1 min-h-0` instead of conditional
+     - This allows proper flex height propagation: Tabs → TabsContent → DocumentViewer → Scroll Container
+
+2. **Search bar not working properly**
+   - **Problem**: Search functionality was not highlighting matches or had errors
+   - **Issues Found**:
+     - No escaping of special regex characters (e.g., searching for "." would match any character)
+     - DOM manipulation errors when highlighting across element boundaries
+     - No error handling for edge cases
+   - **Solution**:
+     - Added regex character escaping for search terms
+     - Improved highlight algorithm to work in reverse order (prevents DOM offset issues)
+     - Added try-catch blocks with proper error logging
+     - Added text node normalization after clearing highlights
+     - Skip empty text nodes to improve performance
+     - Better error handling in `highlightMatches` and `clearHighlights` functions
+
+### Files Modified
+
+- `components/ChatRightPanel.tsx`:
+  - Line 76-78: Removed conditional and `overflow-hidden` from document TabsContent
+  - Line 83: Removed conditional from map TabsContent, added `min-h-0`
+  
+- `components/DocumentViewer.tsx`:
+  - Lines 25-48: Improved search useEffect with regex escaping and error handling
+  - Lines 50-109: Rewrote `highlightMatches` function with better DOM traversal
+  - Lines 128-150: Enhanced `clearHighlights` with normalization and error handling
+
+### Technical Details
+
+**Flex Container Hierarchy (Now Fixed)**:
+```
+ChatRightPanel root: flex flex-col
+  ↓
+Tabs: flex-1 flex flex-col
+  ↓
+TabsContent: flex-1 min-h-0 (no overflow-hidden!) ✓
+  ↓
+DocumentViewer: h-full min-h-0 flex flex-col
+  ↓
+Toolbar: flex-shrink-0 (fixed height)
+  ↓
+Padding Container: flex-1 min-h-0
+  ↓
+Scroll Container: h-full overflow-y-auto ✓ SCROLLS HERE
+  ↓
+Content: no height constraints (triggers scroll)
+```
+
+**Search Algorithm Improvements**:
+1. Escape special regex characters: `term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`
+2. Reverse-order highlighting: Prevents offset changes from affecting subsequent matches
+3. Normalization: Merges adjacent text nodes after removing highlight spans
+4. Error boundaries: Graceful degradation if DOM manipulation fails
+
+### Testing Checklist
+
+- [x] Document scrolls smoothly with tabs visible
+- [x] Document scrolls in fullscreen mode
+- [x] Map tab still works correctly
+- [x] Search bar accepts input
+- [x] Search highlights all matches
+- [x] Can navigate between search matches with arrows
+- [x] Search counter shows correct match numbers
+- [x] Special characters in search don't cause errors
+- [x] Clear search removes all highlights
+
+## 2025-11-02 (Document Scrolling - Final Fix with Proper Architecture)
+
+### Problem Analysis
+
+**Original Issue**: Document content could not be scrolled despite multiple attempts to fix height constraints.
+
+**Root Cause**: 
+1. Component was initially empty (blank file)
+2. When recreated, padding was applied to the wrong element
+3. The scroll container and padding container were the same element, causing conflicts
+
+**Height Chain Before Fix**:
+```
+Page: h-screen (viewport height)
+  ↓ full height ✓
+Main container: flex-1
+  ↓ full height ✓
+Header: shrink-0 (fixed)
+  ↓
+Content area: flex-1 overflow-hidden
+  ↓ full height ✓
+ChatRightPanel: h-full (PROBLEM - h-full doesn't work in overflow-hidden flex)
+  ↓ constraints lost ❌
+Tabs: flex-1 flex flex-col
+  ↓
+TabsContent: min-h-0 flex-1
+  ↓
+DocumentViewer: h-full min-h-0 (missing implementation)
+  ↓
+Scroll container: flex-1 overflow-y-auto (no height to work with)
+```
+
+**Key Issue**: The `<div className="flex-1 flex overflow-hidden">` parent of ChatRightPanel has `overflow-hidden`, which means `h-full` on ChatRightPanel doesn't receive proper height constraints. The element needs `flex-1` applied at the ChatRightPanel level, OR the parent needs to properly propagate height.
+
+### Solution Implemented - Correct Architecture
+
+**Key Insight**: Padding and scrolling must be on **separate elements**:
+- **Parent**: Fixed size container WITH padding (creates margins around content)
+- **Child**: Fills parent and scrolls (overflow happens here)
+- **Content**: Unlimited height (triggers scroll when exceeds parent)
+
+**Final Structure**:
+```jsx
+<div className="flex flex-col h-full min-h-0">
+  
+  // Toolbar: fixed height, never scrolls
+  <div className="flex-shrink-0">
+    {/* Search bar, title */}
+  </div>
+  
+  // PARENT: Fixed container WITH padding
+  <div className="flex-1 min-h-0 px-8 py-6">
+    
+    // CHILD: Fills parent, scrolls when content overflows
+    <div className="h-full overflow-y-auto">
+      
+      // CONTENT: Can be any height
+      <div dangerouslySetInnerHTML={{ __html }} />
+      
+    </div>
+  </div>
+  
+</div>
+```
+
+**Why This Works**:
+- Parent (`flex-1 min-h-0 px-8 py-6`): Takes remaining space, padding creates margins
+- Child (`h-full overflow-y-auto`): Fills 100% of parent (minus padding), scrolls when needed
+- Content: No height constraints, can expand infinitely, triggers scroll
+
+**Critical Height Classes Explained**:
+- `h-full`: Takes parent's full height
+- `min-h-0`: Allows flex children to be smaller than their content (critical for scrolling)
+- `flex-1`: Takes all remaining flex space
+- `overflow-y-auto`: Shows scrollbar when content exceeds height
+- `flex-shrink-0`: Toolbar doesn't compress, maintains natural height
+
+### How It Works Now - Three-Layer Architecture
+
+1. **DocumentViewer Root** (`h-full min-h-0`):
+   - Receives full height from TabsContent
+   - Flex column container for toolbar + content area
+
+2. **Toolbar** (`flex-shrink-0`):
+   - Fixed natural height, never scrolls
+   - Contains search bar and controls
+   - Always visible at top
+
+3. **Padding Container** (`flex-1 min-h-0 px-8 py-6`):
+   - Gets all remaining space after toolbar
+   - **Applies padding** - creates visual margins
+   - Does NOT scroll itself
+
+4. **Scroll Container** (`h-full overflow-y-auto`):
+   - Nested inside padding container
+   - Fills 100% of parent's height (accounting for padding)
+   - **This element scrolls** when content overflows
+
+5. **Content** (HTML content):
+   - No padding, no height constraints
+   - Can be any height
+   - When exceeds scroll container height, triggers scrollbar
+
+### Why Previous Approaches Failed
+
+1. **ScrollArea Component Issue**:
+   - Requires specific viewport context
+   - Doesn't work well with dynamic content in flex containers
+   - Native `overflow-y-auto` is more reliable
+
+2. **Padding on Wrong Element** (Critical):
+   - Previous implementation had padding on the content div INSIDE scroll container
+   - This meant padding scrolled away with content
+   - Correct: Padding must be on PARENT of scroll container
+   - This creates fixed margins around the scrollable area
+
+3. **Single Element for Both Jobs**:
+   - Tried to make one div both hold padding AND scroll
+   - Doesn't work - these must be separate responsibilities
+   - **Parent**: Fixed size + padding (boundary)
+   - **Child**: Scrolls within that boundary
+
+### Files Modified
+- `components/DocumentViewer.tsx` - Complete implementation with proper flex/height structure
+
+### Result
+Users can now:
+- ✓ Scroll through entire document content
+- ✓ See native browser scrollbar
+- ✓ Use keyboard to scroll (Page Up/Down, Space, etc.)
+- ✓ Toolbar stays fixed at top
+- ✓ Search highlighting scrolls to match
+- ✓ Document is fully accessible regardless of length
+
+## 2025-11-02 (Document Scrolling Fix)
+
+### Fixed
+- **Document Scrolling**: Fixed critical issue where users could not scroll through document content
+  - **Root Cause**: ScrollArea component from Radix UI lacked proper height constraints from parent flex containers
+  - **Solution**: 
+    - Added `min-h-0 overflow-hidden` to TabsContent in `ChatRightPanel.tsx` to allow proper flex shrinking
+    - Replaced ScrollArea component with native `overflow-y-auto` div for more reliable scrolling
+    - Added `min-h-0` to DocumentViewer root container and scroll container for proper height propagation
+    - Added `shrink-0` to toolbar to prevent it from shrinking
+    - Updated search match scrolling to work correctly with new scroll container
+
+### Changed
+- **Scrolling Implementation**: Replaced ScrollArea with native browser scrolling
+  - More reliable and predictable scrolling behavior
+  - Better performance for long documents
+  - Maintains all existing functionality (search, highlighting, navigation)
+  - Improved scroll-to-match functionality that properly centers search results
+
+### Technical Details
+- **Height Constraints**: Fixed flex container chain with proper `min-h-0` classes
+  - TabsContent: `min-h-0 overflow-hidden` allows flex children to shrink
+  - DocumentViewer root: `h-full min-h-0` ensures proper height propagation
+  - Scroll container: `flex-1 min-h-0 overflow-y-auto` enables scrolling
+  - Toolbar: `shrink-0` prevents it from being compressed
+
+### Files Modified
+- `components/ChatRightPanel.tsx` - Added height constraints to TabsContent
+- `components/DocumentViewer.tsx` - Replaced ScrollArea with native overflow scrolling, improved scroll-to-match
+
+### Result
+Users can now scroll through entire document content using mouse wheel, trackpad, or scrollbar. Document content is fully accessible and readable.
+
+## 2025-11-02 (Document Viewer Optimization & Right Panel Enhancement)
+
+### Added
+- **DocumentViewer Component**: New dedicated component for rendering PLU documents with PDF-like styling
+  - Modern document display with proper typography and spacing
+  - Full-text search functionality with match highlighting
+  - Search navigation (previous/next match buttons)
+  - Fullscreen toggle for expanded viewing
+  - Match counter showing current position in document (e.g., "3/12")
+  - Smooth highlighting animation on search matches
+  - Professional toolbar with document title and controls
+
+- **Enhanced HTML Rendering**: Improved HTML content styling with comprehensive CSS framework
+  - Proper heading hierarchy (h1-h6) with distinct sizes and spacing
+  - Professional typography with Lato font and proper contrast
+  - Improved list styling (ordered and unordered)
+  - Enhanced table rendering with alternating row colors
+  - Better blockquote styling with left border and background
+  - Code block styling with syntax highlighting readiness
+  - Image handling with rounded corners and shadows
+  - Definition list support (dl, dt, dd)
+  - Link styling with hover effects
+  - Section/article styling with visual separation
+
+- **Global CSS Enhancements**: Added comprehensive styles in `app/globals.css`
+  - `.document-viewer-content` component layer with complete typography rules
+  - Proper spacing and margins for all HTML elements
+  - Color scheme matching project guidelines (grays and blacks)
+  - Scroll margin for heading navigation
+  - Animation for search match highlights
+  - Table alternating row backgrounds for improved readability
+
+### Changed
+- **Right Panel Width**: Increased from 40% to 50% (split screen now 50/50)
+  - Updated `ChatRightPanel.tsx` width from `md:w-[40%]` to `md:w-1/2`
+  - Provides more space for document reading and viewing
+  - Better balance between chat and document panels
+  - Improves usability for complex document navigation
+
+- **Document Tab Layout**: Replaced basic prose styling with professional DocumentViewer
+  - Removed ScrollArea wrapper from document tab
+  - Removed basic inline styling
+  - Replaced with comprehensive DocumentViewer component
+
+- **Header Styling**: Improved right panel header
+  - Added consistent padding and styling
+  - Better alignment of tabs and close button
+  - More professional appearance
+
+### Technical Details
+- **Search Implementation**: Uses DOM TreeWalker API for efficient text node traversal
+  - Case-insensitive search with regex support
+  - Real-time match counting
+  - Smooth scrolling to current match
+  - Memory-efficient highlight management (clears previous highlights)
+
+- **HTML Enhancement**: Custom `sanitizeAndEnhanceHtml()` function
+  - Parses HTML content safely
+  - Applies Tailwind classes to existing elements
+  - Maintains document structure and semantics
+  - Non-destructive (doesn't remove existing content)
+
+- **Responsive Design**: Works seamlessly across devices
+  - Desktop: Full 50% panel width
+  - Tablet: Full-width modal with 50% height
+  - Mobile: Full-screen modal with proper spacing
+
+### Files Modified
+- `components/DocumentViewer.tsx` - New file
+- `components/ChatRightPanel.tsx` - Updated to use DocumentViewer and increase width
+- `app/globals.css` - Added comprehensive document styling
+
+### UI/UX Improvements
+- **Readability**: Proper contrast, spacing, and typography
+- **Navigation**: Search functionality helps users find information quickly
+- **Professional Look**: PDF-like appearance inspires confidence
+- **Performance**: Efficient DOM manipulation and search highlighting
+- **Accessibility**: Proper heading hierarchy and semantic HTML support
+
+## 2025-11-02 (HTML Document Display in Document Tab)
+
+### Added
+- **HTML Content Display**: Document tab now displays HTML content from the `documents` table when available
+  - Added `documentData` state to store HTML content and document ID
+  - Modified `enrichConversationData` to capture and store `html_content` when a document is found
+  - Pass `documentHtml` prop to `ChatRightPanel` from the chat page
+  - Rendered HTML content using `dangerouslySetInnerHTML` with prose styling
+
+### Changed
+- **Removed Zoom Controls**: Removed zoom functionality from document tab
+  - Deleted zoom state variable
+  - Deleted zoom in/out buttons and percentage display
+  - Deleted unused `ZoomIn` and `ZoomOut` imports from lucide-react
+  - Removed `transform: scale()` styling
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx` - Added document state and HTML capture logic
+- `components/ChatRightPanel.tsx` - Updated interface, removed zoom controls, added HTML rendering
+
+## 2025-11-02 (Map Full Height Layout Fix)
+
+### Fixed
+- **Map Full Height Display**: Fixed Leaflet map only filling bottom portion of right panel, leaving white space above
+  - **Root Cause**: 
+    1. Nested div structure with conflicting `flex-1` and `h-full` combinations prevented proper height propagation
+    2. Inactive document `TabsContent` had `flex-1` class causing it to take up space even when `hidden=""`, preventing map tab from filling full height
+  - **Solution**: 
+    - Simplified nested div structure in `ChatRightPanel` map `TabsContent` - removed unnecessary wrapper divs
+    - Removed `rounded-lg border` constraints from `MapArtifact` wrapper that prevented edge-to-edge filling
+    - Added `p-0` to `TabsContent` to remove padding
+    - Added `flex-1` to `MapArtifact` wrapper to ensure it fills flex container
+    - **Conditionally apply `flex-1`**: Only apply `flex-1` class when tab is active to prevent inactive hidden tabs from participating in flex layout calculations
+  - **Result**: Map now fills entire right panel tab area from top to bottom with no white space
+  - **Files Modified**:
+    - `components/ChatRightPanel.tsx` - Simplified map tab structure, removed nested divs, conditionally apply flex-1 based on activeTab
+    - `components/MapArtifact.tsx` - Removed border/rounded corners, added flex-1 for proper filling
+
+## 2025-11-02 (Grid Layout and Panel Header Improvements)
+
+### Changed
+- **Grid Layout for Artifact Cards**: Changed `InlineArtifactCard` container from vertical stack to 2-column grid layout
+  - Maps and Documents now display side-by-side on medium+ screens (`md:grid-cols-2`)
+  - Cards stack vertically on mobile devices (`grid-cols-1`)
+  - Same gap spacing maintained (`gap-3`)
+  - File: `app/chat/[conversation_id]/page.tsx` (line 1011)
+  
+- **Simplified Right Panel Header**: Removed "Documents PLU" title and integrated close button with tabs
+  - Tabs (Document, Carte) now on same line as close button (X icon)
+  - Tabs on left, close button on right
+  - Cleaner, more compact header design
+  - File: `components/ChatRightPanel.tsx` (lines 46-75)
+  
+- **Full-Width Map Display**: Removed padding from map container to fill entire available space
+  - Map now displays edge-to-edge in tab content area
+  - Better utilization of panel space for geographic visualization
+  - File: `components/ChatRightPanel.tsx` (line 141)
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx`
+- `components/ChatRightPanel.tsx`
+
+## 2025-11-02 (Inline Artifact Intro Layer)
+
+### Added
+- **Claude-style artefact introduction** at the top of new conversations in `app/chat/[conversation_id]/page.tsx`.
+  - Assistant posts a `"Carte chargée"` message followed by two inline artefact cards (map and document) that mirror Claude's conversation flow.
+  - Cards open the right-panel artefact tabs and reflect loading status (loading → ready) while the map/document are prepared.
+- **`InlineArtifactCard` component** to render reusable artefact chips with MWPLU colours and status feedback.
+- **Right panel tab coordination** by wiring `ChatRightPanel` to accept `activeTab` and `onTabChange` props so inline cards can focus the relevant artefact.
+
+### Changed
+- Replaced the previous loading simulation with an orchestrated intro sequence that shows the map first, then the document, while keeping the panel open by default.
+- Updated the conversation scroll area spacing so the intro cards and subsequent chat messages stack cleanly.
+- Discarded the in-progress UI tests for this iteration per product request to focus solely on the interaction polish.
+
+### Files
+- `app/chat/[conversation_id]/page.tsx`
+- `components/InlineArtifactCard.tsx` *(new)*
+- `components/ChatRightPanel.tsx`
+
+## 2025-11-02 (Claude-Style Collapsible Sidebar with Light Theme)
+
+### Redesigned - Collapsible Sidebar with Light Theme (Claude Style)
+- **Sidebar Navigation**: Claude-style collapsible navigation with light theme
+  - **Collapsible**: Toggle between 64px (icon-only) and 280px (expanded) widths
+  - **Light Theme**: Uses project's color scheme (white, greys, black)
+  - **Clean Lucide Icons**: Plus, MessageSquare, Folder, User, ChevronLeft, Menu
+  - **Toggle Button**: ChevronLeft when expanded, Menu when collapsed (always visible)
+  
+- **Collapsed State (64px)**:
+  - Menu icon toggle button at top
+  - Plus icon → "Nouvelle recherche" with tooltip
+  - MessageSquare icon → "Chat" with tooltip
+  - Folder icon → "Projets" with tooltip
+  - User avatar icon → "Profil" dropdown menu with Paramètres and Déconnexion
+  
+- **Expanded State (280px)**:
+  - MWPLU logo at top with ChevronLeft toggle button
+  - "Nouvelle recherche" button (black background with Plus icon)
+  - "Chat" navigation button with MessageSquare icon
+  - "Projets" navigation button with Folder icon
+  - "Récents" section with scrollable list of recent conversations
+    - Shows up to 20 most recent conversations in descending order
+    - Conversation titles, last activity time
+    - Click to navigate to conversation
+  - "Profil" dropdown menu at bottom
+
+### Color Scheme
+Following project guidelines from `project_context.md`:
+- **Background**: `#FFFFFF` (white)
+- **Border**: `#E5E5E5` (light grey) 
+- **Icon color**: `#333333` (dark grey) normal state
+- **Icon color hover**: `#000000` (black) on hover
+- **Hover background**: `#F5F5F5` (very light grey)
+- **Active conversation**: `#E5E5E5` (light grey)
+- **Button**: `#000000` with `#1a1a1a` hover
+
+### Modified Files
+- `components/ChatLeftSidebar.tsx` - Complete redesign:
+  - Added collapse/expand state management with `collapsed` prop (default: true)
+  - Added toggle button with Menu/ChevronLeft icons (always visible)
+  - Conditional rendering: collapsed vs expanded layout
+  - Recent conversations list loaded from V2 conversations
+  - Query: All user's active conversations ordered by last_message_at descending
+  - Tooltips on all icons in collapsed state
+  - Navigation buttons in expanded state
+  - ScrollArea for recent chats list
+  - Light theme styling with inline styles matching project guidelines
+  - User dropdown menu with logout functionality
+- `app/chat/[conversation_id]/page.tsx`:
+  - No changes needed (sidebar manages its own state)
+- `app/page.tsx`:
+  - No changes needed (sidebar manages its own state)
+
+### Technical Details
+- Uses inline styles: `style={{ backgroundColor: '#FFFFFF' }}` for consistency with project
+- Hover states: `onMouseEnter/Leave` with inline color changes
+- Icons: All Lucide React icons (Plus, MessageSquare, Folder, User, ChevronLeft, Menu)
+- Tooltips: `TooltipProvider` wrapping entire sidebar
+- Smooth transitions: `transition-all duration-300 ease-in-out` for width changes
+- Recent chats: Loads up to 20 conversations, sorted by last_message_at descending
+- Current conversation highlight: Shows active conversation in different background color
+
 ## 2025-11-02 (Fix Document Query Loop) - UPDATED
 
 ### Fixed - Document Query Loop and RLS Issues

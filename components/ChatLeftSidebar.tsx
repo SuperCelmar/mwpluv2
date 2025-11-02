@@ -2,374 +2,401 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Plus, Settings, User, ChevronLeft, Menu, MessageSquare, MapPin, ChevronDown, ChevronRight, Folder } from 'lucide-react';
+import { Plus, MessageSquare, Folder, User, ChevronLeft, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { supabase, V2Conversation } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { supabase, V2Project, V2Conversation } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-interface ProjectWithConversations extends V2Project {
-  conversations?: V2Conversation[];
-}
-
 interface ChatLeftSidebarProps {
-  collapsed: boolean;
-  onToggle: () => void;
   onNewConversation: () => void;
 }
 
-export function ChatLeftSidebar({ collapsed, onToggle, onNewConversation }: ChatLeftSidebarProps) {
+export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [projects, setProjects] = useState<ProjectWithConversations[]>([]);
+  const [collapsed, setCollapsed] = useState(true);
+  const [conversations, setConversations] = useState<V2Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
 
   const getCurrentConversationId = () => {
     const match = pathname?.match(/\/chat\/([^\/]+)/);
     return match ? match[1] : null;
   };
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  const loadProjects = async () => {
+  const loadConversations = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
-        .from('v2_projects')
-        .select(`
-          *,
-          conversations:v2_conversations(
-            id,
-            title,
-            last_message_at,
-            context_metadata,
-            created_at,
-            is_active
-          )
-        `)
+        .from('v2_conversations')
+        .select('*')
         .eq('user_id', user.id)
-        .in('status', ['draft', 'active'])
-        .order('updated_at', { ascending: false });
+        .eq('is_active', true)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(20);
 
       if (error) throw error;
 
       if (data) {
-        // Filter and sort conversations within each project
-        const processed = data.map((project) => ({
-          ...project,
-          conversations: project.conversations
-            ?.filter((conv) => conv.is_active)
-            .sort((a, b) => {
-              const timeA = a.last_message_at || a.created_at;
-              const timeB = b.last_message_at || b.created_at;
-              return new Date(timeB).getTime() - new Date(timeA).getTime();
-            }),
-        }));
-        setProjects(processed);
-        
-        // Auto-expand projects that have the current conversation
-        const currentConvId = getCurrentConversationId();
-        if (currentConvId) {
-          const projectWithCurrentConv = processed.find((p) =>
-            p.conversations?.some((c) => c.id === currentConvId)
-          );
-          if (projectWithCurrentConv) {
-            setExpandedProjects(new Set([projectWithCurrentConv.id]));
-          }
-        }
+        setConversations(data);
       }
     } catch (error) {
-      console.error('Error loading projects:', error);
+      console.error('Error loading conversations:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleProject = (projectId: string) => {
-    setExpandedProjects((prev) => {
-      const next = new Set(prev);
-      if (next.has(projectId)) {
-        next.delete(projectId);
-      } else {
-        next.add(projectId);
-      }
-      return next;
-    });
-  };
-
-  const handleConversationClick = (conversationId: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
+  const handleConversationClick = (conversationId: string) => {
     router.push(`/chat/${conversationId}`);
   };
 
-  const handleProjectClick = (project: ProjectWithConversations) => {
-    // If project has conversations, toggle expand. Otherwise, go to first conversation or create new.
-    if (project.conversations && project.conversations.length > 0) {
-      toggleProject(project.id);
-      // If collapsing and current conversation is in this project, navigate to first conversation
-      if (expandedProjects.has(project.id)) {
-        // Will collapse, but if user clicks project name, navigate to most recent conversation
-      }
-    }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
   };
 
   const currentConversationId = getCurrentConversationId();
+
   return (
-    <>
+    <TooltipProvider>
       <div
-        className={cn(
-          'relative border-r bg-gray-50 transition-all duration-300 ease-in-out flex flex-col',
-          collapsed ? 'w-0 md:w-16' : 'w-64'
-        )}
+        className={cn('flex flex-col h-screen transition-all duration-300 ease-in-out', collapsed ? 'w-16' : 'w-[280px]')}
+        style={{ borderRight: '1px solid #E5E5E5', backgroundColor: '#FFFFFF' }}
       >
-        <div className={cn('flex-1 overflow-hidden', collapsed && 'hidden md:flex md:flex-col')}>
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              {!collapsed && (
-                <h1 className="text-xl font-bold text-gray-900">MWPLU</h1>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onToggle}
-                className={cn('h-8 w-8', collapsed && 'mx-auto')}
-              >
-                {collapsed ? (
-                  <Menu className="h-5 w-5" />
-                ) : (
-                  <ChevronLeft className="h-5 w-5" />
-                )}
-              </Button>
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {collapsed ? (
+            /* Collapsed: Unified icon container */
+            <div className="p-4 flex flex-col items-center gap-2">
+              {/* Hamburger Menu */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setCollapsed(!collapsed)}
+                    className="w-10 h-10 transition-all duration-150"
+                    style={{ color: '#333333' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#F5F5F5';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Menu</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Plus Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onNewConversation}
+                    className="w-10 h-10 transition-all duration-150"
+                    style={{ backgroundColor: '#000000', color: '#FFFFFF' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a1a1a'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#000000'}
+                  >
+                    <Plus className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Nouvelle recherche</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Chat Icon */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {/* TODO: Open conversations panel */}}
+                    className="w-10 h-10 transition-all duration-150"
+                    style={{ color: '#333333' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#F5F5F5';
+                      e.currentTarget.style.color = '#000000';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#333333';
+                    }}
+                  >
+                    <MessageSquare className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Chat</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Folder Icon */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {/* TODO: Open projects panel */}}
+                    className="w-10 h-10 transition-all duration-150"
+                    style={{ color: '#333333' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#F5F5F5';
+                      e.currentTarget.style.color = '#000000';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#333333';
+                    }}
+                  >
+                    <Folder className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Projets</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
-
-            {!collapsed && (
-              <Button
-                onClick={onNewConversation}
-                className="w-full justify-start gap-2"
-                variant="default"
-              >
-                <Plus className="h-4 w-4" />
-                Nouvelle conversation
-              </Button>
-            )}
-
-            {collapsed && (
-              <Button
-                onClick={onNewConversation}
-                size="icon"
-                className="w-full h-10"
-                variant="default"
-              >
-                <Plus className="h-5 w-5" />
-              </Button>
-            )}
-          </div>
-
-          <Separator />
-
-          <ScrollArea className="flex-1">
-            <div className="p-4">
-              {!collapsed && (
-                <>
-                  <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                    Mes Projets
-                  </h2>
-                  <div className="space-y-1">
-                    {loading ? (
-                      <div className="text-sm text-gray-500 text-center py-8">
-                        Chargement...
-                      </div>
-                    ) : projects.length === 0 ? (
-                      <div className="text-sm text-gray-500 text-center py-8">
-                        Aucun projet pour le moment
-                      </div>
-                    ) : (
-                      projects.map((project) => {
-                        const isExpanded = expandedProjects.has(project.id);
-                        const projectName = project.name || 'Sans nom';
-                        const hasConversations = project.conversations && project.conversations.length > 0;
-                        const conversationCount = project.conversations?.length || 0;
-                        
-                        // Get most recent activity
-                        const mostRecentActivity = project.conversations && project.conversations.length > 0
-                          ? project.conversations[0].last_message_at || project.conversations[0].created_at
-                          : project.updated_at;
-
-                        return (
-                          <div key={project.id} className="space-y-0.5">
-                            {/* Project Header */}
-                            <button
-                              onClick={() => handleProjectClick(project)}
-                              className={cn(
-                                'w-full text-left px-3 py-2 rounded-md transition-colors text-sm group',
-                                'hover:bg-gray-100 text-gray-700'
-                              )}
-                            >
-                              <div className="flex items-start gap-2">
-                                {hasConversations ? (
-                                  isExpanded ? (
-                                    <ChevronDown className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-400" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-400" />
-                                  )
-                                ) : (
-                                  <div className="w-4 h-4 flex-shrink-0" />
-                                )}
-                                <span className="text-base flex-shrink-0">{project.icon || '📁'}</span>
-                                <div className="flex-1 min-w-0">
-                                  <p className={cn(
-                                    'font-medium truncate',
-                                    project.status === 'draft' && !project.name && 'italic text-gray-500'
-                                  )}>
-                                    {projectName}
-                                  </p>
-                                  {project.main_address && (
-                                    <p className="text-xs text-gray-500 truncate mt-0.5">
-                                      {project.main_address}
-                                    </p>
-                                  )}
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    {conversationCount > 0 && (
-                                      <span className="text-xs text-gray-400">
-                                        {conversationCount} {conversationCount === 1 ? 'conversation' : 'conversations'}
-                                      </span>
-                                    )}
-                                    <span className="text-xs text-gray-400">
-                                      {formatDistanceToNow(new Date(mostRecentActivity), {
-                                        addSuffix: true,
-                                        locale: fr,
-                                      })}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-
-                            {/* Conversations List */}
-                            {isExpanded && hasConversations && (
-                              <div className="ml-8 space-y-0.5 pl-2 border-l border-gray-200">
-                                {project.conversations?.map((conversation) => {
-                                  const isActive = currentConversationId === conversation.id;
-                                  const convTitle = conversation.title || 
-                                    conversation.context_metadata?.initial_address || 
-                                    'Conversation';
-                                  const lastActivity = conversation.last_message_at || conversation.created_at;
-
-                                  return (
-                                    <button
-                                      key={conversation.id}
-                                      onClick={(e) => handleConversationClick(conversation.id, e)}
-                                      className={cn(
-                                        'w-full text-left px-3 py-2 rounded-md transition-colors text-sm',
-                                        isActive
-                                          ? 'bg-blue-100 text-blue-900'
-                                          : 'hover:bg-gray-100 text-gray-700'
-                                      )}
-                                    >
-                                      <div className="flex items-start gap-2">
-                                        <MessageSquare className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-medium truncate text-xs">
-                                            {convTitle}
-                                          </p>
-                                          <p className="text-xs text-gray-400 mt-0.5">
-                                            {formatDistanceToNow(new Date(lastActivity), {
-                                              addSuffix: true,
-                                              locale: fr,
-                                            })}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              )}
-
-              {collapsed && (
-                <div className="flex flex-col items-center gap-2">
-                  {projects.slice(0, 5).map((project) => {
-                    // In collapsed state, show project icon, navigate to first conversation
-                    const firstConversation = project.conversations && project.conversations.length > 0
-                      ? project.conversations[0]
-                      : null;
-                    
-                    return (
-                      <button
-                        key={project.id}
-                        onClick={() => {
-                          if (firstConversation) {
-                            handleConversationClick(firstConversation.id);
-                          }
-                        }}
-                        className={cn(
-                          'w-10 h-10 rounded-md flex items-center justify-center transition-colors',
-                          firstConversation && currentConversationId === firstConversation.id
-                            ? 'bg-blue-100 text-blue-900'
-                            : 'hover:bg-gray-100 text-gray-600'
-                        )}
-                        title={project.name || 'Sans nom'}
-                      >
-                        <span className="text-lg">{project.icon || '📁'}</span>
-                      </button>
-                    );
-                  })}
+          ) : (
+            /* Expanded: Header with toggle and navigation */
+            <>
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h1 className="text-2xl font-bold" style={{ color: '#000000' }}>MWPLU</h1>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setCollapsed(!collapsed)}
+                    className="h-8 w-8"
+                    style={{ color: '#333333' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#F5F5F5';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
                 </div>
-              )}
-            </div>
-          </ScrollArea>
 
-          <Separator />
+                {/* New Conversation Button */}
+                <Button
+                  onClick={onNewConversation}
+                  className="w-full h-10 transition-all duration-150 rounded"
+                  style={{ backgroundColor: '#000000', color: '#FFFFFF' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a1a1a'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#000000'}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouvelle recherche
+                </Button>
+              </div>
 
-          <div className="p-4 space-y-2">
-            {!collapsed ? (
-              <>
-                <Button variant="ghost" className="w-full justify-start gap-2" size="sm">
-                  <Settings className="h-4 w-4" />
-                  Paramètres
-                </Button>
-                <Button variant="ghost" className="w-full justify-start gap-2" size="sm">
-                  <User className="h-4 w-4" />
-                  Profil
-                </Button>
-              </>
+              <Separator style={{ backgroundColor: '#E5E5E5' }} />
+
+              {/* Navigation Icons / Content */}
+              <div className="p-4">
+                <div className="space-y-2">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start transition-all duration-150"
+                    style={{ color: '#333333' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F5F5F5'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Chat
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start transition-all duration-150"
+                    style={{ color: '#333333' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F5F5F5'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <Folder className="h-4 w-4 mr-2" />
+                    Projets
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!collapsed && (
+            <>
+              <Separator style={{ backgroundColor: '#E5E5E5' }} />
+
+              {/* Recent Chats List (only when expanded) */}
+            <ScrollArea className="flex-1">
+              <div className="p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#666666' }}>
+                  Récents
+                </h2>
+                <div className="space-y-1">
+                  {loading ? (
+                    <div className="text-sm text-center py-8" style={{ color: '#666666' }}>
+                      Chargement...
+                    </div>
+                  ) : conversations.length === 0 ? (
+                    <div className="text-sm text-center py-8" style={{ color: '#666666' }}>
+                      Aucune conversation
+                    </div>
+                  ) : (
+                    conversations.map((conversation) => {
+                      const isActive = currentConversationId === conversation.id;
+                      const convTitle = conversation.title || 
+                        conversation.context_metadata?.initial_address || 
+                        'Conversation';
+                      const lastActivity = conversation.last_message_at || conversation.created_at;
+
+                      return (
+                        <button
+                          key={conversation.id}
+                          onClick={() => handleConversationClick(conversation.id)}
+                          className="w-full text-left px-3 py-2 rounded-lg transition-all duration-150 text-sm"
+                          style={{
+                            backgroundColor: isActive ? '#E5E5E5' : '#FFFFFF',
+                            color: '#000000'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.backgroundColor = '#F5F5F5';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.backgroundColor = '#FFFFFF';
+                            }
+                          }}
+                        >
+                          <div className="flex flex-col gap-1">
+                            <p className="font-medium truncate text-xs" style={{ color: '#000000' }}>
+                              {convTitle}
+                            </p>
+                            <p className="text-xs" style={{ color: '#999999' }}>
+                              {formatDistanceToNow(new Date(lastActivity), {
+                                addSuffix: true,
+                                locale: fr,
+                              })}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+            </>
+          )}
+
+          {/* Spacer for collapsed */}
+          {collapsed && <div className="flex-1" />}
+
+          {/* Bottom Icon - Avatar */}
+          <div className="py-4">
+            {collapsed ? (
+              <div className="flex justify-center">
+                <DropdownMenu>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-12 h-12 rounded-full transition-all duration-150"
+                          style={{ color: '#333333' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#F5F5F5';
+                            e.currentTarget.style.color = '#000000';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                            e.currentTarget.style.color = '#333333';
+                          }}
+                        >
+                          <User className="h-5 w-5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Profil</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <DropdownMenuContent align="end" side="right" className="w-56">
+                    <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => {/* TODO: Open settings */}}>
+                      Paramètres
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout}>
+                      Déconnexion
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             ) : (
-              <>
-                <Button variant="ghost" size="icon" className="w-full h-10">
-                  <Settings className="h-5 w-5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="w-full h-10">
-                  <User className="h-5 w-5" />
-                </Button>
-              </>
+              <div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start transition-all duration-150"
+                      style={{ color: '#333333' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F5F5F5'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <User className="h-4 w-4 mr-2" />
+                      Profil
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" side="right" className="w-56">
+                    <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => {/* TODO: Open settings */}}>
+                      Paramètres
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout}>
+                      Déconnexion
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
           </div>
         </div>
       </div>
-
-      {!collapsed && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={onToggle}
-        />
-      )}
-    </>
+    </TooltipProvider>
   );
 }

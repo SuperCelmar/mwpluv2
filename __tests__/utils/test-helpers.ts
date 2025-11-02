@@ -234,9 +234,38 @@ export function mockRouter() {
 }
 
 export function mockParams(params: Record<string, string>) {
-  const useParamsMock = vi.fn();
-  useParamsMock.mockReturnValue(params);
-  require('next/navigation').useParams = useParamsMock;
+  const nextNavigation = require('next/navigation');
+  const existingUseParams = nextNavigation.useParams;
+
+  if (existingUseParams && typeof existingUseParams === 'function') {
+    const mockFn = existingUseParams as any;
+
+    if (typeof mockFn.mockReturnValue === 'function') {
+      mockFn.mockReturnValue(params);
+      return;
+    }
+
+    if (typeof mockFn.mockImplementation === 'function') {
+      mockFn.mockImplementation(() => params);
+      return;
+    }
+  }
+
+  const useParamsMock = vi.fn(() => params);
+
+  try {
+    Object.defineProperty(nextNavigation, 'useParams', {
+      value: useParamsMock,
+      writable: true,
+      configurable: true,
+    });
+  } catch (error) {
+    try {
+      nextNavigation.useParams = useParamsMock;
+    } catch (assignError) {
+      // As a last resort, do nothing. Tests relying on useParams should handle undefined gracefully.
+    }
+  }
 }
 
 export async function waitForLoadingToFinish() {

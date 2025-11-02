@@ -83,7 +83,7 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading }: MapArtifactPr
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded-lg border">
+      <div className="w-full h-full flex items-center justify-center bg-gray-50">
         <div className="text-center space-y-4 p-8">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
           <div className="space-y-2">
@@ -99,7 +99,7 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading }: MapArtifactPr
 
   if (!lat || !lon) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded-lg border">
+      <div className="w-full h-full flex items-center justify-center bg-gray-50">
         <div className="text-center space-y-4 p-8">
           <div className="text-gray-400 text-lg">⚠️</div>
           <div className="space-y-2">
@@ -114,7 +114,7 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading }: MapArtifactPr
   }
 
   return (
-    <div className="w-full h-full rounded-lg border overflow-hidden">
+    <div className="w-full h-full flex-1 overflow-hidden">
       <MapContainer
         center={[lat, lon]}
         zoom={16}
