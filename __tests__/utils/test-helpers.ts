@@ -164,7 +164,7 @@ export function createMockV2ResearchHistory(overrides?: Partial<V2ResearchHistor
     search_intent: null,
     geocoded_address: 'Paris',
     city_id: null,
-    zone_id: null,
+    zoning_id: null,
     geo_lon: 2.3397,
     geo_lat: 48.8606,
     documents_found: null,

@@ -26,11 +26,19 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
 
     const timer = setTimeout(async () => {
       if (query.length >= 3) {
+        console.log('[ADDRESS_SEARCH] Search triggered (debounced), query length:', query.length, 'query:', query);
         setLoading(true);
+        console.log('[ADDRESS_SEARCH] Starting API call for address search');
         const results = await searchAddress(query);
+        console.log('[ADDRESS_SEARCH] API call completed, received', results.length, 'suggestions');
         setSuggestions(results);
         setShowSuggestions(true);
         setLoading(false);
+        if (results.length > 0) {
+          console.log('[ADDRESS_SEARCH] Suggestions displayed to user');
+        } else {
+          console.log('[ADDRESS_SEARCH] No suggestions found for query');
+        }
       } else {
         setSuggestions([]);
         setShowSuggestions(false);
@@ -41,6 +49,14 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
   }, [query, selectedAddress]);
 
   const handleSelect = (suggestion: AddressSuggestion) => {
+    console.log('[ADDRESS_SELECT] User selected address:', {
+      label: suggestion.properties.label,
+      name: suggestion.properties.name,
+      city: suggestion.properties.city,
+      postcode: suggestion.properties.postcode,
+      citycode: suggestion.properties.citycode,
+      coordinates: suggestion.geometry?.coordinates,
+    });
     setQuery(suggestion.properties.label);
     setSuggestions([]);
     setShowSuggestions(false);
@@ -48,13 +64,28 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
   };
 
   const handleSubmit = () => {
+    console.log('[ADDRESS_SUBMIT] Submit button clicked or Enter key pressed');
     if (selectedAddress && !disabled) {
+      console.log('[ADDRESS_SUBMIT] Calling onAddressSubmit callback with address:', {
+        label: selectedAddress.properties.label,
+        city: selectedAddress.properties.city,
+        citycode: selectedAddress.properties.citycode,
+        coordinates: selectedAddress.geometry?.coordinates,
+      });
       onAddressSubmit(selectedAddress);
+    } else {
+      if (!selectedAddress) {
+        console.log('[ADDRESS_SUBMIT] Submit blocked: no address selected');
+      }
+      if (disabled) {
+        console.log('[ADDRESS_SUBMIT] Submit blocked: component is disabled');
+      }
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && selectedAddress) {
+      console.log('[ADDRESS_SUBMIT] Enter key pressed with address selected');
       e.preventDefault();
       handleSubmit();
     }
@@ -81,6 +112,7 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
             <Input
               value={query}
               onChange={(e) => {
+                console.log('[ADDRESS_INPUT] User typing in input field:', e.target.value);
                 setQuery(e.target.value);
                 setSelectedAddress(null);
               }}
@@ -129,15 +161,29 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
           )}
         </div>
 
-        <Button
-          onClick={handleSubmit}
-          disabled={disabled || !selectedAddress}
-          size="lg"
-          className="w-full h-12 text-base"
-        >
-          <Send className="h-5 w-5 mr-2" />
-          Commencer l'analyse
-        </Button>
+        {disabled ? (
+          <div className="flex flex-col items-center justify-center space-y-4 py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <div className="text-center space-y-2">
+              <p className="text-lg font-semibold text-gray-900">
+                Analyse en cours...
+              </p>
+              <p className="text-sm text-gray-600">
+                Récupération des informations de la commune et du PLU
+              </p>
+            </div>
+          </div>
+        ) : (
+          <Button
+            onClick={handleSubmit}
+            disabled={!selectedAddress}
+            size="lg"
+            className="w-full h-12 text-base"
+          >
+            <Send className="h-5 w-5 mr-2" />
+            Commencer l'analyse
+          </Button>
+        )}
       </div>
     </div>
   );

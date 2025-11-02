@@ -10,16 +10,16 @@ import { AddressInput } from '@/components/AddressInput';
 import { NewConversationModal } from '@/components/NewConversationModal';
 import { ConversationActions } from '@/components/ConversationActions';
 import { DeleteConversationDialog } from '@/components/DeleteConversationDialog';
-import { supabase, ChatConversation, ChatMessage } from '@/lib/supabase';
+import { supabase, V2Conversation, V2Message } from '@/lib/supabase';
 import { AddressSuggestion } from '@/lib/address-api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 
 export default function ConversationPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [conversation, setConversation] = useState<ChatConversation | null>(null);
-  const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversation, setConversation] = useState<V2Conversation | null>(null);
+  const [conversations, setConversations] = useState<V2Conversation[]>([]);
+  const [messages, setMessages] = useState<V2Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -44,10 +44,17 @@ export default function ConversationPage({ params }: { params: { id: string } })
 
   const fetchConversation = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
       const { data, error } = await supabase
-        .from('chat_conversations')
+        .from('v2_conversations')
         .select('*')
         .eq('id', params.id)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (error) throw error;
@@ -68,9 +75,14 @@ export default function ConversationPage({ params }: { params: { id: string } })
 
   const fetchConversations = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
-        .from('chat_conversations')
+        .from('v2_conversations')
         .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
         .order('last_message_at', { ascending: false })
         .order('created_at', { ascending: false });
 
@@ -84,7 +96,7 @@ export default function ConversationPage({ params }: { params: { id: string } })
   const fetchMessages = async () => {
     try {
       const { data, error } = await supabase
-        .from('chat_messages')
+        .from('v2_messages')
         .select('*')
         .eq('conversation_id', params.id)
         .order('created_at', { ascending: true });
@@ -101,13 +113,14 @@ export default function ConversationPage({ params }: { params: { id: string } })
     try {
       const fullAddress = address.properties.label;
 
-      // Store in research_history
+      // Store in v2_research_history
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         await supabase
-          .from('research_history')
+          .from('v2_research_history')
           .insert({
             user_id: user.id,
+            conversation_id: params.id,
             address_input: fullAddress,
             geo_lon: address.geometry?.coordinates?.[0] || null,
             geo_lat: address.geometry?.coordinates?.[1] || null,
@@ -116,12 +129,13 @@ export default function ConversationPage({ params }: { params: { id: string } })
       }
 
       const { data: userMessage, error: userError } = await supabase
-        .from('chat_messages')
+        .from('v2_messages')
         .insert({
           conversation_id: params.id,
           user_id: user?.id || '',
           role: 'user',
           message: fullAddress,
+          message_type: 'address_search',
           conversation_turn: messages.length + 1,
         })
         .select()
@@ -149,12 +163,13 @@ export default function ConversationPage({ params }: { params: { id: string } })
       const { message: aiResponse } = await response.json();
 
       const { data: assistantMessage, error: assistantError } = await supabase
-        .from('chat_messages')
+        .from('v2_messages')
         .insert({
           conversation_id: params.id,
           user_id: user?.id || '',
           role: 'assistant',
           message: aiResponse,
+          message_type: 'text',
           conversation_turn: messages.length + 2,
         })
         .select()
@@ -166,12 +181,13 @@ export default function ConversationPage({ params }: { params: { id: string } })
         setMessages((prev) => [...prev, assistantMessage]);
       }
 
-      // Update conversation last_message_at
+      // Update conversation last_message_at and message_count
       await supabase
-        .from('chat_conversations')
+        .from('v2_conversations')
         .update({ 
           last_message_at: new Date().toISOString(),
           is_active: true,
+          message_count: messages.length + 2,
         })
         .eq('id', params.id);
     } catch (error) {
@@ -188,13 +204,13 @@ export default function ConversationPage({ params }: { params: { id: string } })
       if (!user) return;
 
       const { data: userMessage, error: userError } = await supabase
-        .from('chat_messages')
+        .from('v2_messages')
         .insert({
           conversation_id: params.id,
           user_id: user.id,
-          document_id: conversation?.document_id || null,
           role: 'user',
           message: content,
+          message_type: 'text',
           conversation_turn: messages.length + 1,
         })
         .select()
@@ -207,10 +223,11 @@ export default function ConversationPage({ params }: { params: { id: string } })
       }
 
       await supabase
-        .from('chat_conversations')
+        .from('v2_conversations')
         .update({ 
           last_message_at: new Date().toISOString(),
           is_active: true,
+          message_count: messages.length + 1,
         })
         .eq('id', params.id);
 
@@ -229,13 +246,13 @@ export default function ConversationPage({ params }: { params: { id: string } })
       const { message: aiResponse } = await response.json();
 
       const { data: assistantMessage, error: assistantError } = await supabase
-        .from('chat_messages')
+        .from('v2_messages')
         .insert({
           conversation_id: params.id,
           user_id: user.id,
-          document_id: conversation?.document_id || null,
           role: 'assistant',
           message: aiResponse,
+          message_type: 'text',
           conversation_turn: messages.length + 2,
         })
         .select()
@@ -246,6 +263,15 @@ export default function ConversationPage({ params }: { params: { id: string } })
       if (assistantMessage) {
         setMessages((prev) => [...prev, assistantMessage]);
       }
+
+      // Update conversation message_count after assistant message
+      await supabase
+        .from('v2_conversations')
+        .update({ 
+          last_message_at: new Date().toISOString(),
+          message_count: messages.length + 2,
+        })
+        .eq('id', params.id);
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {
@@ -266,15 +292,18 @@ export default function ConversationPage({ params }: { params: { id: string } })
   const handleDelete = async () => {
     try {
       const { error } = await supabase
-        .from('chat_conversations')
-        .delete()
+        .from('v2_conversations')
+        .update({ 
+          is_active: false,
+          archived_at: new Date().toISOString(),
+        })
         .eq('id', params.id);
 
       if (error) throw error;
 
       router.push('/dashboard');
     } catch (error) {
-      console.error('Error deleting conversation:', error);
+      console.error('Error archiving conversation:', error);
     }
   };
 

@@ -6,13 +6,20 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { MapArtifact } from '@/components/MapArtifact';
 
 interface ChatRightPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  mapProps?: {
+    lat: number;
+    lon: number;
+    zoneGeometry?: any;
+    isLoading?: boolean;
+  };
 }
 
-export function ChatRightPanel({ isOpen, onClose }: ChatRightPanelProps) {
+export function ChatRightPanel({ isOpen, onClose, mapProps }: ChatRightPanelProps) {
   const [activeTab, setActiveTab] = useState('document');
   const [zoom, setZoom] = useState(100);
 
@@ -128,9 +135,18 @@ export function ChatRightPanel({ isOpen, onClose }: ChatRightPanelProps) {
               </TabsContent>
 
               <TabsContent value="map" className="flex-1 flex flex-col mt-0">
-                <ScrollArea className="flex-1">
-                  <div className="p-6">
-                    <div className="aspect-square bg-gray-50 rounded-lg border flex items-center justify-center">
+                <div className="flex-1 p-6">
+                  {mapProps ? (
+                    <div className="h-full">
+                      <MapArtifact
+                        lat={mapProps.lat}
+                        lon={mapProps.lon}
+                        zoneGeometry={mapProps.zoneGeometry}
+                        isLoading={mapProps.isLoading}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-full aspect-square bg-gray-50 rounded-lg border flex items-center justify-center">
                       <div className="text-center space-y-4 p-8">
                         <Map className="h-16 w-16 mx-auto text-gray-400" />
                         <div className="space-y-2">
@@ -157,8 +173,8 @@ export function ChatRightPanel({ isOpen, onClose }: ChatRightPanelProps) {
                         </div>
                       </div>
                     </div>
-                  </div>
-                </ScrollArea>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </>

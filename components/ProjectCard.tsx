@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { MapPin, Clock, MessageSquare } from 'lucide-react';
+import { MapPin, Clock, MessageSquare, Star } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { V2Project, V2Conversation } from '@/lib/supabase';
@@ -65,23 +65,53 @@ export function ProjectCard({ project }: ProjectCardProps) {
     }
   };
 
+  const getProjectTypeLabel = (type: string | null): string | null => {
+    if (!type) return null;
+    const typeMap: Record<string, string> = {
+      construction: 'Construction',
+      extension: 'Extension',
+      renovation: 'Rénovation',
+      amenagement: 'Aménagement',
+      lotissement: 'Lotissement',
+      other: 'Autre',
+    };
+    return typeMap[type] || type;
+  };
+
   const timeAgo = formatDistanceToNow(new Date(lastActivity), {
     addSuffix: true,
     locale: fr,
   });
 
   const projectName = project.name || 'Sans nom';
+  const isDraftUnnamed = project.status === 'draft' && !project.name;
+  const projectTypeLabel = getProjectTypeLabel(project.project_type);
+  
+  // Get border color - use project color if set and not default gray
+  const borderColor = project.color && project.color !== '#6B7280' 
+    ? project.color 
+    : undefined;
 
   return (
     <Card
       className="cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02]"
+      style={borderColor ? { borderLeftColor: borderColor, borderLeftWidth: '4px' } : undefined}
       onClick={handleClick}
     >
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <span className="text-2xl flex-shrink-0">{project.icon || '📁'}</span>
-            <CardTitle className="text-xl truncate">{projectName}</CardTitle>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <CardTitle 
+                className={`text-xl truncate ${isDraftUnnamed ? 'italic text-gray-500' : ''}`}
+              >
+                {projectName}
+              </CardTitle>
+              {project.starred && (
+                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 flex-shrink-0" />
+              )}
+            </div>
           </div>
           <Badge variant={getStatusBadgeVariant(project.status)}>
             {getStatusLabel(project.status)}
@@ -91,6 +121,13 @@ export function ProjectCard({ project }: ProjectCardProps) {
           <CardDescription className="flex items-center gap-2">
             <MapPin className="h-4 w-4 flex-shrink-0" />
             <span className="truncate">{project.main_address}</span>
+          </CardDescription>
+        )}
+        {projectTypeLabel && (
+          <CardDescription className="text-xs">
+            <Badge variant="outline" className="text-xs">
+              {projectTypeLabel}
+            </Badge>
           </CardDescription>
         )}
       </CardHeader>

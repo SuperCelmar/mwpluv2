@@ -2,21 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Plus, Settings, User, ChevronLeft, Menu, MessageSquare, MapPin } from 'lucide-react';
+import { Plus, Settings, User, ChevronLeft, Menu, MessageSquare, MapPin, ChevronDown, ChevronRight, Folder } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { supabase, V2Project, V2Conversation } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-interface Conversation {
-  id: string;
-  name: string;
-  address: string | null;
-  municipality: string | null;
-  updated_at: string;
+interface ProjectWithConversations extends V2Project {
+  conversations?: V2Conversation[];
 }
 
 interface ChatLeftSidebarProps {
@@ -28,52 +24,103 @@ interface ChatLeftSidebarProps {
 export function ChatLeftSidebar({ collapsed, onToggle, onNewConversation }: ChatLeftSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [projects, setProjects] = useState<ProjectWithConversations[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+
+  const getCurrentConversationId = () => {
+    const match = pathname?.match(/\/chat\/([^\/]+)/);
+    return match ? match[1] : null;
+  };
 
   useEffect(() => {
-    loadConversations();
+    loadProjects();
   }, []);
 
-  const loadConversations = async () => {
+  const loadProjects = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
-        .from('chat_conversations')
-        .select('id, last_message_at, created_at')
+        .from('v2_projects')
+        .select(`
+          *,
+          conversations:v2_conversations(
+            id,
+            title,
+            last_message_at,
+            context_metadata,
+            created_at,
+            is_active
+          )
+        `)
         .eq('user_id', user.id)
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false });
+        .in('status', ['draft', 'active'])
+        .order('updated_at', { ascending: false });
 
       if (error) throw error;
 
       if (data) {
-        // Map to interface - we'll need to fetch address separately if needed
-        const mapped = data.map((conv) => ({
-          id: conv.id,
-          name: 'Conversation',
-          address: null,
-          municipality: null,
-          updated_at: conv.last_message_at || conv.created_at,
+        // Filter and sort conversations within each project
+        const processed = data.map((project) => ({
+          ...project,
+          conversations: project.conversations
+            ?.filter((conv) => conv.is_active)
+            .sort((a, b) => {
+              const timeA = a.last_message_at || a.created_at;
+              const timeB = b.last_message_at || b.created_at;
+              return new Date(timeB).getTime() - new Date(timeA).getTime();
+            }),
         }));
-        setConversations(mapped);
+        setProjects(processed);
+        
+        // Auto-expand projects that have the current conversation
+        const currentConvId = getCurrentConversationId();
+        if (currentConvId) {
+          const projectWithCurrentConv = processed.find((p) =>
+            p.conversations?.some((c) => c.id === currentConvId)
+          );
+          if (projectWithCurrentConv) {
+            setExpandedProjects(new Set([projectWithCurrentConv.id]));
+          }
+        }
       }
     } catch (error) {
-      console.error('Error loading conversations:', error);
+      console.error('Error loading projects:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConversationClick = (conversationId: string) => {
+  const toggleProject = (projectId: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  };
+
+  const handleConversationClick = (conversationId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     router.push(`/chat/${conversationId}`);
   };
 
-  const getCurrentConversationId = () => {
-    const match = pathname?.match(/\/chat\/([^\/]+)/);
-    return match ? match[1] : null;
+  const handleProjectClick = (project: ProjectWithConversations) => {
+    // If project has conversations, toggle expand. Otherwise, go to first conversation or create new.
+    if (project.conversations && project.conversations.length > 0) {
+      toggleProject(project.id);
+      // If collapsing and current conversation is in this project, navigate to first conversation
+      if (expandedProjects.has(project.id)) {
+        // Will collapse, but if user clicks project name, navigate to most recent conversation
+      }
+    }
   };
 
   const currentConversationId = getCurrentConversationId();
@@ -142,41 +189,115 @@ export function ChatLeftSidebar({ collapsed, onToggle, onNewConversation }: Chat
                       <div className="text-sm text-gray-500 text-center py-8">
                         Chargement...
                       </div>
-                    ) : conversations.length === 0 ? (
+                    ) : projects.length === 0 ? (
                       <div className="text-sm text-gray-500 text-center py-8">
                         Aucun projet pour le moment
                       </div>
                     ) : (
-                      conversations.map((conversation) => (
-                        <button
-                          key={conversation.id}
-                          onClick={() => handleConversationClick(conversation.id)}
-                          className={cn(
-                            'w-full text-left px-3 py-2 rounded-md transition-colors text-sm',
-                            currentConversationId === conversation.id
-                              ? 'bg-blue-100 text-blue-900'
-                              : 'hover:bg-gray-100 text-gray-700'
-                          )}
-                        >
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">
-                                {conversation.municipality || 'Conversation'}
-                              </p>
-                              <p className="text-xs text-gray-500 truncate mt-0.5">
-                                {conversation.address || conversation.name}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                {formatDistanceToNow(new Date(conversation.updated_at), {
-                                  addSuffix: true,
-                                  locale: fr,
+                      projects.map((project) => {
+                        const isExpanded = expandedProjects.has(project.id);
+                        const projectName = project.name || 'Sans nom';
+                        const hasConversations = project.conversations && project.conversations.length > 0;
+                        const conversationCount = project.conversations?.length || 0;
+                        
+                        // Get most recent activity
+                        const mostRecentActivity = project.conversations && project.conversations.length > 0
+                          ? project.conversations[0].last_message_at || project.conversations[0].created_at
+                          : project.updated_at;
+
+                        return (
+                          <div key={project.id} className="space-y-0.5">
+                            {/* Project Header */}
+                            <button
+                              onClick={() => handleProjectClick(project)}
+                              className={cn(
+                                'w-full text-left px-3 py-2 rounded-md transition-colors text-sm group',
+                                'hover:bg-gray-100 text-gray-700'
+                              )}
+                            >
+                              <div className="flex items-start gap-2">
+                                {hasConversations ? (
+                                  isExpanded ? (
+                                    <ChevronDown className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-400" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-400" />
+                                  )
+                                ) : (
+                                  <div className="w-4 h-4 flex-shrink-0" />
+                                )}
+                                <span className="text-base flex-shrink-0">{project.icon || '📁'}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className={cn(
+                                    'font-medium truncate',
+                                    project.status === 'draft' && !project.name && 'italic text-gray-500'
+                                  )}>
+                                    {projectName}
+                                  </p>
+                                  {project.main_address && (
+                                    <p className="text-xs text-gray-500 truncate mt-0.5">
+                                      {project.main_address}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {conversationCount > 0 && (
+                                      <span className="text-xs text-gray-400">
+                                        {conversationCount} {conversationCount === 1 ? 'conversation' : 'conversations'}
+                                      </span>
+                                    )}
+                                    <span className="text-xs text-gray-400">
+                                      {formatDistanceToNow(new Date(mostRecentActivity), {
+                                        addSuffix: true,
+                                        locale: fr,
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+
+                            {/* Conversations List */}
+                            {isExpanded && hasConversations && (
+                              <div className="ml-8 space-y-0.5 pl-2 border-l border-gray-200">
+                                {project.conversations?.map((conversation) => {
+                                  const isActive = currentConversationId === conversation.id;
+                                  const convTitle = conversation.title || 
+                                    conversation.context_metadata?.initial_address || 
+                                    'Conversation';
+                                  const lastActivity = conversation.last_message_at || conversation.created_at;
+
+                                  return (
+                                    <button
+                                      key={conversation.id}
+                                      onClick={(e) => handleConversationClick(conversation.id, e)}
+                                      className={cn(
+                                        'w-full text-left px-3 py-2 rounded-md transition-colors text-sm',
+                                        isActive
+                                          ? 'bg-blue-100 text-blue-900'
+                                          : 'hover:bg-gray-100 text-gray-700'
+                                      )}
+                                    >
+                                      <div className="flex items-start gap-2">
+                                        <MessageSquare className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-medium truncate text-xs">
+                                            {convTitle}
+                                          </p>
+                                          <p className="text-xs text-gray-400 mt-0.5">
+                                            {formatDistanceToNow(new Date(lastActivity), {
+                                              addSuffix: true,
+                                              locale: fr,
+                                            })}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  );
                                 })}
-                              </p>
-                            </div>
+                              </div>
+                            )}
                           </div>
-                        </button>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </>
@@ -184,21 +305,32 @@ export function ChatLeftSidebar({ collapsed, onToggle, onNewConversation }: Chat
 
               {collapsed && (
                 <div className="flex flex-col items-center gap-2">
-                  {conversations.slice(0, 5).map((conversation) => (
-                    <button
-                      key={conversation.id}
-                      onClick={() => handleConversationClick(conversation.id)}
-                      className={cn(
-                        'w-10 h-10 rounded-md flex items-center justify-center transition-colors',
-                        currentConversationId === conversation.id
-                          ? 'bg-blue-100 text-blue-900'
-                          : 'hover:bg-gray-100 text-gray-600'
-                      )}
-                      title={conversation.municipality || conversation.name}
-                    >
-                      <MapPin className="h-5 w-5" />
-                    </button>
-                  ))}
+                  {projects.slice(0, 5).map((project) => {
+                    // In collapsed state, show project icon, navigate to first conversation
+                    const firstConversation = project.conversations && project.conversations.length > 0
+                      ? project.conversations[0]
+                      : null;
+                    
+                    return (
+                      <button
+                        key={project.id}
+                        onClick={() => {
+                          if (firstConversation) {
+                            handleConversationClick(firstConversation.id);
+                          }
+                        }}
+                        className={cn(
+                          'w-10 h-10 rounded-md flex items-center justify-center transition-colors',
+                          firstConversation && currentConversationId === firstConversation.id
+                            ? 'bg-blue-100 text-blue-900'
+                            : 'hover:bg-gray-100 text-gray-600'
+                        )}
+                        title={project.name || 'Sans nom'}
+                      >
+                        <span className="text-lg">{project.icon || '📁'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

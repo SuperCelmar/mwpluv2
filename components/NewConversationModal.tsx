@@ -54,24 +54,44 @@ export function NewConversationModal({ open, onOpenChange }: NewConversationModa
         return;
       }
 
-      const { data, error } = await supabase
-        .from('chat_conversations')
+      // 1. Create v2_project with user-provided name and type
+      const { data: project, error: projectError } = await supabase
+        .from('v2_projects')
         .insert({
           user_id: user.id,
-          document_id: null, // Will be set after address/document lookup
+          name: name.trim(),
+          project_type: ConversationType || null,
+          status: 'active', // Since user provided a name, project is active
+        })
+        .select()
+        .single();
+
+      if (projectError || !project) {
+        throw projectError || new Error('Failed to create project');
+      }
+
+      // 2. Create v2_conversation linked to the project
+      const { data: conversation, error: conversationError } = await supabase
+        .from('v2_conversations')
+        .insert({
+          user_id: user.id,
+          project_id: project.id,
+          conversation_type: 'general', // General conversation until address is provided
+          title: name.trim(),
           is_active: true,
         })
         .select()
         .single();
 
-      if (error) throw error;
-
-      if (data) {
-        onOpenChange(false);
-        router.push(`/chat/${data.id}`);
+      if (conversationError || !conversation) {
+        throw conversationError || new Error('Failed to create conversation');
       }
+
+      // 3. Navigate to chat
+      onOpenChange(false);
+      router.push(`/chat/${conversation.id}`);
     } catch (err) {
-      console.error('Error creating Conversation:', err);
+      console.error('Error creating project:', err);
       setError('Une erreur est survenue. Veuillez réessayer.');
     } finally {
       setLoading(false);
@@ -122,6 +142,9 @@ export function NewConversationModal({ open, onOpenChange }: NewConversationModa
                   <SelectItem value="construction">Construction</SelectItem>
                   <SelectItem value="extension">Extension</SelectItem>
                   <SelectItem value="renovation">Rénovation</SelectItem>
+                  <SelectItem value="amenagement">Aménagement</SelectItem>
+                  <SelectItem value="lotissement">Lotissement</SelectItem>
+                  <SelectItem value="other">Autre</SelectItem>
                 </SelectContent>
               </Select>
             </div>

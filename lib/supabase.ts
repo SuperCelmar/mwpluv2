@@ -27,6 +27,7 @@ export type Profile = {
 export type City = {
   id: string;
   name: string;
+  insee_code: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -211,7 +212,7 @@ export type V2ResearchHistory = {
   search_intent: string | null;
   geocoded_address: string | null;
   city_id: string | null;
-  zone_id: string | null;
+  zoning_id: string | null;
   geo_lon: number | null;
   geo_lat: number | null;
   documents_found: string[] | null;  // UUID array

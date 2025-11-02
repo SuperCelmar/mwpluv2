@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, V2Conversation, V2Message, V2ResearchHistory } from '@/lib/supabase';
+import { logChatEvent, getFirstDocumentId } from '@/lib/analytics';
+import { fetchMunicipality, fetchDocument, fetchZoneUrba } from '@/lib/carto-api';
+import { getOrCreateCity, getOrCreateZoning, getOrCreateZone } from '@/lib/geo-enrichment';
 import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
 import { ChatRightPanel } from '@/components/ChatRightPanel';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
@@ -31,8 +34,22 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [artifactsLoading, setArtifactsLoading] = useState(true);
   const [isFirstMessage, setIsFirstMessage] = useState(true);
   const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
+  const [enrichmentStep, setEnrichmentStep] = useState<'idle' | 'municipality' | 'city_check' | 'documents' | 'zones_check' | 'map_loading' | 'map_ready' | 'document_check' | 'complete'>('idle');
+  const [enrichmentStatus, setEnrichmentStatus] = useState<string>('');
+  
+  // Map and document state
+  const [mapData, setMapData] = useState<{ lat: number; lon: number; zoneGeometry?: any; isLoading?: boolean } | null>(null);
+  const [zoneData, setZoneData] = useState<{ zoneId: string | null; zoningId: string | null; cityId: string | null }>({
+    zoneId: null,
+    zoningId: null,
+    cityId: null,
+  });
+  
+  // Guard to prevent re-execution of enrichment (handles React Strict Mode double-invoke)
+  const enrichmentInProgressRef = useRef(false);
 
   useEffect(() => {
+    console.log('[CHAT_PAGE] Page initialized, conversation_id:', params.conversation_id);
     checkAuthAndLoadConversation();
   }, [params.conversation_id]);
 
@@ -43,18 +60,23 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   }, [conversation]);
 
   const checkAuthAndLoadConversation = async () => {
+    console.log('[CHAT_PAGE] Checking authentication and loading conversation');
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      console.log('[CHAT_PAGE] No user found, redirecting to login');
       router.push('/login');
       return;
     }
+    console.log('[CHAT_PAGE] User authenticated, user_id:', user.id);
     setUserId(user.id);
     await loadConversation(user.id);
   };
 
   const loadConversation = async (currentUserId: string) => {
+    console.log('[CHAT_PAGE] loadConversation called, conversation_id:', params.conversation_id, 'user_id:', currentUserId);
     try {
       // Load conversation
+      console.log('[CHAT_PAGE] Loading conversation from database');
       const { data: conv, error: convError } = await supabase
         .from('v2_conversations')
         .select('*')
@@ -62,30 +84,43 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         .eq('user_id', currentUserId)
         .maybeSingle();
 
-      if (convError) throw convError;
+      if (convError) {
+        console.error('[CHAT_PAGE] Error loading conversation:', convError);
+        throw convError;
+      }
 
       if (!conv) {
+        console.log('[CHAT_PAGE] Conversation not found, redirecting to home');
         router.push('/');
         return;
       }
 
+      console.log('[CHAT_PAGE] Conversation loaded successfully, conversation_id:', conv.id);
       setConversation(conv);
 
       // Load messages for this conversation
+      console.log('[CHAT_PAGE] Loading messages for conversation');
       const { data: messagesData, error: messagesError } = await supabase
         .from('v2_messages')
         .select('*')
         .eq('conversation_id', params.conversation_id)
         .order('created_at', { ascending: true });
 
-      if (messagesError) throw messagesError;
+      if (messagesError) {
+        console.error('[CHAT_PAGE] Error loading messages:', messagesError);
+        throw messagesError;
+      }
 
       if (messagesData && messagesData.length > 0) {
+        console.log('[CHAT_PAGE] Messages loaded successfully, count:', messagesData.length);
         setMessages(messagesData);
         setIsFirstMessage(false);
+      } else {
+        console.log('[CHAT_PAGE] No messages found for conversation');
       }
 
       // Load research history for context
+      console.log('[CHAT_PAGE] Loading research history for context');
       const { data: research } = await supabase
         .from('v2_research_history')
         .select('*')
@@ -95,12 +130,30 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         .maybeSingle();
 
       if (research) {
+        console.log('[CHAT_PAGE] Research context loaded, research_id:', research.id);
         setResearchContext(research);
+        
+        // Always start enrichment process (will verify/refresh data even if complete)
+        // This ensures loading phase always shows when redirected from address submission
+        // Check guard to prevent re-execution
+        if (!enrichmentInProgressRef.current) {
+          console.log('[CHAT_PAGE] Starting enrichment process');
+          enrichConversationData(research, conv);
+        } else {
+          console.log('[CHAT_PAGE] Enrichment already in progress, skipping');
+        }
+      } else {
+        console.log('[CHAT_PAGE] No research history found');
+        // No research found, hide loading after brief delay
+        setTimeout(() => {
+          setArtifactsLoading(false);
+        }, 500);
       }
 
+      console.log('[CHAT_PAGE] loadConversation completed successfully');
       setLoading(false);
     } catch (error) {
-      console.error('Error loading conversation:', error);
+      console.error('[CHAT_PAGE] Error loading conversation:', error);
       router.push('/');
     }
   };
@@ -114,12 +167,518 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }, 3000);
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!userId || !conversation || sendingMessage) return;
+  const enrichConversationData = async (research: V2ResearchHistory, conv: V2Conversation) => {
+    // Prevent re-execution if already in progress
+    if (enrichmentInProgressRef.current) {
+      console.log('[ENRICHMENT] enrichConversationData already in progress, skipping');
+      return;
+    }
+    
+    console.log('[ENRICHMENT] enrichConversationData called');
+    console.log('[ENRICHMENT] Research ID:', research.id, 'Conversation ID:', conv.id);
+    
+    // Set guard to prevent re-execution
+    enrichmentInProgressRef.current = true;
+    
+    // Show loading state during enrichment
+    setArtifactsLoading(true);
+    
+    try {
+    
+    const contextMetadata = conv.context_metadata as any;
+    const inseeCode = contextMetadata?.insee_code || '';
+    const lon = contextMetadata?.geocoded?.lon;
+    const lat = contextMetadata?.geocoded?.lat;
+    
+    console.log('[ENRICHMENT] Context metadata extracted:', { inseeCode, lon, lat });
+    
+    if (!inseeCode) {
+      console.error('[ENRICHMENT] No INSEE code in context metadata');
+      // Still show loading briefly before hiding
+      setTimeout(() => {
+        setArtifactsLoading(false);
+      }, 1000);
+      return;
+    }
 
+    // Initialize variables from research or fetch new data
+    let cityId: string | null = research.city_id;
+    let zoneId: string | null = null;
+    let zoningId: string | null = research.zoning_id;
+    
+    console.log('[ENRICHMENT] Starting with existing data:', { 
+      hasCityId: !!cityId, 
+      hasZoningId: !!zoningId,
+      researchId: research.id 
+    });
+    
+    // If we don't have basic enrichment data yet, fetch it
+    if (!cityId) {
+      console.log('[ENRICHMENT] No city_id found, running basic enrichment');
+      
+      let municipality: any = null;
+      let isRnu = false;
+      let communeName = '';
+      let municipalityInseeCode = '';
+      let hasAnalysis = false;
+
+    // Step 1: Municipality API
+    try {
+      console.log('[ENRICHMENT] Step 1: Fetching municipality data');
+      setEnrichmentStep('municipality');
+      setEnrichmentStatus('Vérification de la commune...');
+      
+      municipality = await fetchMunicipality({ insee_code: inseeCode });
+      
+      if (!municipality) {
+        console.error('[ENRICHMENT] Step 1: No municipality data found');
+        setEnrichmentStatus('Erreur: Commune non trouvée');
+        // Continue anyway, try to use context metadata
+        communeName = contextMetadata?.city?.toLowerCase() || '';
+        municipalityInseeCode = inseeCode;
+        console.log('[ENRICHMENT] Step 1: Using context metadata as fallback');
+      } else {
+        console.log('[ENRICHMENT] Step 1: Municipality data fetched successfully');
+        // Update status after municipality API
+        setEnrichmentStatus('Données de la ville mises à jour');
+        
+        // Determine RNU status
+        isRnu = municipality.properties.is_rnu === true;
+        communeName = municipality.properties.name.toLowerCase();
+        municipalityInseeCode = municipality.properties.insee;
+        console.log('[ENRICHMENT] Step 1: Municipality details:', { communeName, municipalityInseeCode, isRnu });
+      }
+    } catch (error) {
+      console.error('[ENRICHMENT] Step 1: Error fetching municipality:', error);
+      setEnrichmentStatus('Erreur lors de la vérification de la commune');
+      // Continue with context metadata
+      communeName = contextMetadata?.city?.toLowerCase() || '';
+      municipalityInseeCode = inseeCode;
+    }
+
+    // Step 2: City Database Check
+    try {
+      console.log('[ENRICHMENT] Step 2: City database check/creation');
+      setEnrichmentStep('city_check');
+      setEnrichmentStatus('Vérification de la base de données...');
+      
+      if (communeName && municipalityInseeCode) {
+        cityId = await getOrCreateCity(municipalityInseeCode, communeName);
+        console.log('[ENRICHMENT] Step 2: City ID obtained:', cityId);
+        
+        // Update research_history with city_id
+        console.log('[ENRICHMENT] Step 2: Updating research_history with city_id');
+        const { error: cityUpdateError } = await supabase
+          .from('v2_research_history')
+          .update({
+            city_id: cityId,
+            geocoded_address: communeName,
+          })
+          .eq('id', research.id);
+        
+        if (cityUpdateError) {
+          console.error('[ENRICHMENT] Step 2: Failed to update research history with city:', cityUpdateError);
+        }
+        
+        // Reload research context
+        const { data: updatedResearch } = await supabase
+          .from('v2_research_history')
+          .select('*')
+          .eq('id', research.id)
+          .single();
+        
+        if (updatedResearch) {
+          console.log('[ENRICHMENT] Step 2: Research context updated');
+          setResearchContext(updatedResearch);
+        }
+      } else {
+        console.log('[ENRICHMENT] Step 2: Skipped - missing communeName or municipalityInseeCode');
+      }
+    } catch (error) {
+      console.error('[ENRICHMENT] Step 2: Error in city check:', error);
+      setEnrichmentStatus('Erreur lors de la vérification de la base de données');
+      // Continue without city_id
+    }
+
+    // Step 3: Documents & RNU Check
+    try {
+      console.log('[ENRICHMENT] Step 3: Documents fetch');
+      setEnrichmentStep('documents');
+      setEnrichmentStatus('Récupération des documents...');
+      
+      if (!isRnu) {
+        console.log('[ENRICHMENT] Step 3: Not RNU, fetching documents');
+        // Fetch documents if not RNU
+        const documents = await fetchDocument({ insee_code: inseeCode });
+        console.log('[ENRICHMENT] Step 3: Documents fetched, count:', documents.length);
+        // Check if analysis exists (this would be determined by checking if documents exist)
+        hasAnalysis = documents.length > 0;
+        console.log('[ENRICHMENT] Step 3: Has analysis:', hasAnalysis);
+      } else {
+        console.log('[ENRICHMENT] Step 3: RNU detected, skipping document fetch');
+      }
+    } catch (error) {
+      console.error('[ENRICHMENT] Step 3: Error fetching documents:', error);
+      setEnrichmentStatus('Erreur lors de la récupération des documents');
+      // Continue without documents
+    }
+    
+    // Step 4: Zones/Zoning Database Check
+    try {
+      console.log('[ENRICHMENT] Step 4: Zones/zoning database check');
+      setEnrichmentStep('zones_check');
+      setEnrichmentStatus('Vérification des zones...');
+      
+      if (!isRnu && cityId) {
+        console.log('[ENRICHMENT] Step 4: Not RNU, checking for existing zones in database');
+        // Check if zones exist in database for this city
+        const { data: zonings } = await supabase
+          .from('zonings')
+          .select('id, name')
+          .eq('city_id', cityId)
+          .limit(1);
+        
+        console.log('[ENRICHMENT] Step 4: Zonings found in database:', zonings?.length || 0);
+        
+        if (zonings && zonings.length > 0) {
+          // Found existing zoning, check for zones
+          zoningId = zonings[0].id;
+          console.log('[ENRICHMENT] Step 4: Zoning ID from database:', zoningId);
+          
+          const { data: zones } = await supabase
+            .from('zones')
+            .select('id')
+            .eq('zoning_id', zonings[0].id)
+            .limit(1);
+          
+          console.log('[ENRICHMENT] Step 4: Zones found in database:', zones?.length || 0);
+          
+          if (zones && zones.length > 0) {
+            zoneId = zones[0].id;
+            hasAnalysis = true; // Analysis available from database
+            console.log('[ENRICHMENT] Step 4: Zone ID from database:', zoneId);
+          }
+        }
+        
+        // If no zones found in DB, fetch from API
+        if (!zoneId && lon !== undefined && lat !== undefined) {
+          console.log('[ENRICHMENT] Step 4: No zones in database, fetching from API');
+          try {
+            const zonesFromAPI = await fetchZoneUrba({ lon, lat });
+            console.log('[ENRICHMENT] Step 4: Zones fetched from API, count:', zonesFromAPI?.length || 0);
+            
+            if (zonesFromAPI && zonesFromAPI.length > 0) {
+              const firstZone = zonesFromAPI[0];
+              const zoneCode = firstZone.properties.libelle;
+              const zoneName = firstZone.properties.libelong || firstZone.properties.libelle;
+              const typezone = firstZone.properties.typezone;
+              console.log('[ENRICHMENT] Step 4: Processing zone:', { zoneCode, zoneName, typezone });
+              
+              // Get or create zoning
+              zoningId = await getOrCreateZoning(cityId, typezone, false);
+              console.log('[ENRICHMENT] Step 4: Zoning ID:', zoningId);
+              
+              // Get or create zone
+              zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName);
+              console.log('[ENRICHMENT] Step 4: Zone ID created:', zoneId);
+              hasAnalysis = true;
+            }
+          } catch (zoneError) {
+            console.error('[ENRICHMENT] Step 4: Error fetching zones from API:', zoneError);
+            // Continue without zones
+          }
+        }
+      } else if (isRnu && cityId) {
+        console.log('[ENRICHMENT] Step 4: RNU detected, creating RNU zoning');
+        // Handle RNU case - create RNU zoning
+        try {
+          zoningId = await getOrCreateZoning(cityId, undefined, true);
+          console.log('[ENRICHMENT] Step 4: RNU zoning created, zoning_id:', zoningId);
+          // No zone ID for RNU since there are no specific zones
+        } catch (rnuError) {
+          console.error('[ENRICHMENT] Step 4: Error creating RNU zoning:', rnuError);
+        }
+      } else {
+        console.log('[ENRICHMENT] Step 4: Skipped - isRnu:', isRnu, 'cityId:', cityId);
+      }
+      
+      // Update research_history with zoning_id
+      if (cityId && zoningId) {
+        console.log('[ENRICHMENT] Step 4: Updating research_history with zoning_id:', zoningId);
+        const { error: zoningUpdateError } = await supabase
+          .from('v2_research_history')
+          .update({
+            zoning_id: zoningId,
+          })
+          .eq('id', research.id);
+        
+        if (zoningUpdateError) {
+          console.error('[ENRICHMENT] Step 4: Failed to update research history with zoning:', zoningUpdateError);
+        }
+      }
+      
+      // Reload research context
+      const { data: finalResearch } = await supabase
+        .from('v2_research_history')
+        .select('*')
+        .eq('id', research.id)
+        .single();
+      
+      if (finalResearch) {
+        console.log('[ENRICHMENT] Step 4: Final research context loaded');
+        setResearchContext(finalResearch);
+      }
+    } catch (error) {
+      console.error('[ENRICHMENT] Step 4: Error in zones check:', error);
+      setEnrichmentStatus('Erreur lors de la vérification des zones');
+      // Continue without zones
+    }
+    } // End of if (!cityId) block - basic enrichment complete
+    
+    // If we already had cityId and zoningId, fetch zoneId from database
+    if (cityId && zoningId && !zoneId) {
+      console.log('[ENRICHMENT] Fetching zone_id for existing enrichment');
+      try {
+        const { data: zones } = await supabase
+          .from('zones')
+          .select('id')
+          .eq('zoning_id', zoningId)
+          .limit(1);
+        
+        if (zones && zones.length > 0) {
+          zoneId = zones[0].id;
+          console.log('[ENRICHMENT] Zone ID from database:', zoneId);
+        }
+      } catch (error) {
+        console.error('[ENRICHMENT] Error fetching zone_id:', error);
+      }
+    }
+    
+    // Store zone data for document lookup
+    setZoneData({ zoneId, zoningId, cityId });
+    console.log('[ENRICHMENT] Zone data stored:', { zoneId, zoningId, cityId });
+    
+    // Step 5: Map Loading Phase
+    console.log('[MAP_ARTIFACT_START] Starting map artifact creation');
+    setEnrichmentStep('map_loading');
+    setEnrichmentStatus('Chargement de la carte...');
+    
+    // Slide in right panel immediately
+    console.log('[MAP_ARTIFACT_START] Opening right panel');
+    setRightPanelOpen(true);
+    
+    // Fetch geometry if we need it
+    let zoneGeometry: any = null;
+    
+    if (zoneId) {
+      console.log('[MAP_ARTIFACT_START] Fetching zone geometry from database');
+      const { data: zoneRecord } = await supabase
+        .from('zones')
+        .select('geometry')
+        .eq('id', zoneId)
+        .maybeSingle();
+      
+      if (zoneRecord && zoneRecord.geometry) {
+        zoneGeometry = zoneRecord.geometry;
+        console.log('[MAP_ARTIFACT_START] Zone geometry loaded from database');
+      } else if (lon !== undefined && lat !== undefined) {
+        // Fetch from API if not in DB
+        console.log('[MAP_ARTIFACT_START] Fetching zone geometry from API');
+        try {
+          const zonesFromAPI = await fetchZoneUrba({ lon, lat });
+          if (zonesFromAPI && zonesFromAPI.length > 0) {
+            zoneGeometry = zonesFromAPI[0].geometry;
+            console.log('[MAP_ARTIFACT_START] Zone geometry loaded from API');
+          }
+        } catch (error) {
+          console.error('[MAP_ARTIFACT_START] Error fetching zone geometry:', error);
+        }
+      }
+    }
+    
+    // Set map data with loading state
+    if (lon !== undefined && lat !== undefined) {
+      setMapData({
+        lat,
+        lon,
+        zoneGeometry,
+        isLoading: true,
+      });
+      console.log('[MAP_ARTIFACT_LOADING] Map data set with loading state');
+    }
+    
+    // Wait 1-2 seconds for loading animation
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('[MAP_ARTIFACT_LOADING] Loading delay completed');
+    
+    // Mark map as ready
+    setEnrichmentStep('map_ready');
+    setEnrichmentStatus('Carte chargée ✓');
+    setMapData(prev => prev ? { ...prev, isLoading: false } : null);
+    console.log('[MAP_ARTIFACT_READY] Map rendered with zone highlighted');
+    
+    // Step 6: Document Retrieval Phase
+    console.log('[DOCUMENT_CHECK_START] Beginning document lookup');
+    setEnrichmentStep('document_check');
+    setEnrichmentStatus('Recherche du document...');
+    
+    try {
+      // Lookup document by zone_id and/or zoning_id (documents table doesn't have city_id)
+      // Build query conditionally based on available values
+      console.log('[DOCUMENT_CHECK_QUERY] Querying documents table:', { zoneId, zoningId });
+      
+      let documentQuery = supabase
+        .from('documents')
+        .select('*');
+      
+      // Only add filters for non-null values
+      if (zoneId) {
+        documentQuery = documentQuery.eq('zone_id', zoneId);
+      }
+      if (zoningId) {
+        documentQuery = documentQuery.eq('zoning_id', zoningId);
+      }
+      
+      // Skip query if both are null
+      if (!zoneId && !zoningId) {
+        console.log('[DOCUMENT_CHECK_QUERY] Both zoneId and zoningId are null, skipping document lookup');
+        // Still complete the flow even without document lookup
+        setEnrichmentStep('complete');
+        setEnrichmentStatus('');
+        setArtifactsLoading(false);
+        console.log('[FLOW_COMPLETE] No zone/zoning data available for document lookup');
+      } else {
+        const { data: document, error: queryError } = await documentQuery.maybeSingle();
+        
+        if (queryError) {
+          console.error('[DOCUMENT_CHECK_QUERY] Query error:', queryError);
+          throw queryError;
+        }
+        
+        console.log('[DOCUMENT_CHECK_RESULT] Document query result:', { found: !!document });
+      
+        if (document) {
+          // Document found - check what type
+          const hasContentJson = !!document.content_json;
+          const hasHtmlContent = !!document.html_content;
+          const hasSourcePluUrl = !!document.source_plu_url;
+          
+          console.log('[DOCUMENT_CHECK_RESULT] Document contents:', {
+            hasContentJson,
+            hasHtmlContent,
+            hasSourcePluUrl,
+          });
+          
+          if (hasContentJson && hasHtmlContent) {
+            // Case 1: Full analysis available
+            console.log('[DOCUMENT_DISPLAY] Full analysis available, document_id:', document.id);
+            setEnrichmentStatus('Analyse trouvée ✓');
+            
+            // TODO: Display analysis in right panel document tab
+            // For now, just mark as complete
+            setEnrichmentStep('complete');
+            setEnrichmentStatus('');
+            setArtifactsLoading(false);
+            console.log('[FLOW_COMPLETE] Full analysis available and ready');
+          } else if (hasSourcePluUrl) {
+            // Case 2: Source PLU only (no analysis)
+            console.log('[DOCUMENT_DISPLAY] Source PLU available, no analysis, document_id:', document.id);
+            setEnrichmentStatus('Document officiel disponible');
+            
+            // TODO: Display source PLU PDF in right panel
+            // Keep chat input disabled
+            setEnrichmentStep('complete');
+            setEnrichmentStatus('');
+            setArtifactsLoading(false);
+            console.log('[FLOW_COMPLETE] Source PLU displayed (analysis not available)');
+          } else {
+            // Document record exists but no useful data
+            console.log('[DOCUMENT_CHECK_RESULT] Document found but no usable content');
+            setEnrichmentStep('complete');
+            setEnrichmentStatus('');
+            setArtifactsLoading(false);
+          }
+        } else {
+          // Case 3: No document record found
+          console.log('[DOCUMENT_CHECK_RESULT] No document found, creating placeholder record');
+          setEnrichmentStatus('Zone non couverte');
+          
+          const typologyId = '7c0f2830-f3fc-4c69-911c-470286f91982';
+          
+          // Try to get source PLU URL from Carto API documents
+          let sourcePluUrl: string | null = null;
+          try {
+            const cartoDocs = await fetchDocument({ insee_code: inseeCode });
+            if (cartoDocs && cartoDocs.length > 0) {
+              sourcePluUrl = cartoDocs[0].properties.document_url || null;
+              console.log('[DOCUMENT_CHECK] Source PLU URL from Carto API:', sourcePluUrl);
+            }
+          } catch (error) {
+            console.error('[DOCUMENT_CHECK] Error fetching Carto documents:', error);
+            // Continue even if Carto API fails
+          }
+          
+          // Create placeholder document (only if we have at least one ID)
+          if (zoneId || zoningId) {
+            const { data: newDocument, error: createError } = await supabase
+              .from('documents')
+              .insert({
+                zoning_id: zoningId,
+                zone_id: zoneId,
+                typology_id: typologyId,
+                source_plu_url: sourcePluUrl,
+              })
+              .select()
+              .single();
+            
+            if (createError) {
+              console.error('[DOCUMENT_CHECK] Error creating document record:', createError);
+              // Continue even if INSERT fails (RLS might block it, but that's ok)
+            } else {
+              console.log('[DOCUMENT_CHECK] Placeholder document created, document_id:', newDocument?.id);
+            }
+          } else {
+            console.log('[DOCUMENT_CHECK] Skipping placeholder creation - no zoneId or zoningId');
+          }
+          
+          setEnrichmentStep('complete');
+          setEnrichmentStatus('');
+          setArtifactsLoading(false);
+          console.log('[FLOW_COMPLETE] Placeholder document created (zone not covered)');
+        }
+      }
+    } catch (error) {
+      console.error('[DOCUMENT_CHECK] Error in document retrieval:', error);
+      setEnrichmentStep('complete');
+      setEnrichmentStatus('');
+      setArtifactsLoading(false);
+    }
+    } catch (error) {
+      // Catch-all for any errors in the enrichment process
+      console.error('[ENRICHMENT] Error in enrichConversationData:', error);
+      setEnrichmentStep('complete');
+      setEnrichmentStatus('');
+      setArtifactsLoading(false);
+    } finally {
+      // Always reset the guard to allow future executions
+      enrichmentInProgressRef.current = false;
+      console.log('[ENRICHMENT] Enrichment process completed, guard reset');
+    }
+  };
+
+  const handleSendMessage = async (content: string) => {
+    console.log('[CHAT_MESSAGE] handleSendMessage called with content length:', content.length);
+    
+    if (!userId || !conversation || sendingMessage) {
+      console.log('[CHAT_MESSAGE] Send blocked:', { hasUserId: !!userId, hasConversation: !!conversation, sendingMessage });
+      return;
+    }
+
+    console.log('[CHAT_MESSAGE] Starting message send process');
     setSendingMessage(true);
 
     // Insert user message
+    console.log('[CHAT_MESSAGE] Creating user message object');
     const userMessage: V2Message = {
       id: Date.now().toString(),
       conversation_id: params.conversation_id,
@@ -140,9 +699,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       created_at: new Date().toISOString(),
     };
 
+    console.log('[CHAT_MESSAGE] Adding user message to UI');
     setMessages((prev) => [...prev, userMessage]);
 
     try {
+      console.log('[CHAT_MESSAGE] Constructing webhook payload');
       const webhookPayload: any = {
         new_conversation: isFirstMessage,
         message: content,
@@ -153,25 +714,35 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
       if (researchContext?.geo_lon && researchContext?.geo_lat) {
         webhookPayload.gps_coordinates = [researchContext.geo_lon, researchContext.geo_lat];
+        console.log('[CHAT_MESSAGE] Added GPS coordinates to payload');
       }
 
       if (researchContext?.documents_found && researchContext.documents_found.length > 0) {
         webhookPayload.document_ids = researchContext.documents_found;
+        console.log('[CHAT_MESSAGE] Added document IDs to payload, count:', researchContext.documents_found.length);
       }
 
       if (researchContext?.geocoded_address) {
         webhookPayload.address = researchContext.geocoded_address;
+        console.log('[CHAT_MESSAGE] Added address to payload');
       }
 
+      console.log('[CHAT_MESSAGE] Calling chat API');
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(webhookPayload),
       });
 
-      if (!response.ok) throw new Error('Failed to get response');
+      console.log('[CHAT_MESSAGE] Chat API response status:', response.status);
+
+      if (!response.ok) {
+        console.error('[CHAT_MESSAGE] Chat API returned error status:', response.status);
+        throw new Error('Failed to get response');
+      }
 
       const data = await response.json();
+      console.log('[CHAT_MESSAGE] Chat API response received, message length:', data.message?.length || 0);
 
       const assistantMessage: V2Message = {
         id: (Date.now() + 1).toString(),
@@ -193,28 +764,41 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         created_at: new Date().toISOString(),
       };
 
+      console.log('[CHAT_MESSAGE] Adding assistant message to UI');
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Insert messages into database
-      await supabase.from('v2_messages').insert([
-        {
-          conversation_id: params.conversation_id,
-          user_id: userId,
-          role: 'user',
-          message: content,
-          conversation_turn: messages.length + 1,
-        },
-        {
-          conversation_id: params.conversation_id,
-          user_id: userId,
-          role: 'assistant',
-          message: data.message,
-          conversation_turn: messages.length + 2,
-          referenced_documents: researchContext?.documents_found || null,
-        },
-      ]);
+      console.log('[CHAT_MESSAGE] Inserting messages into database');
+      const { data: insertedMessages, error: insertError } = await supabase
+        .from('v2_messages')
+        .insert([
+          {
+            conversation_id: params.conversation_id,
+            user_id: userId,
+            role: 'user',
+            message: content,
+            conversation_turn: messages.length + 1,
+          },
+          {
+            conversation_id: params.conversation_id,
+            user_id: userId,
+            role: 'assistant',
+            message: data.message,
+            conversation_turn: messages.length + 2,
+            referenced_documents: researchContext?.documents_found || null,
+          },
+        ])
+        .select();
+
+      if (insertError) {
+        console.error('[CHAT_MESSAGE] Error inserting messages:', insertError);
+        throw insertError;
+      }
+
+      console.log('[CHAT_MESSAGE] Messages inserted successfully, count:', insertedMessages?.length || 0);
 
       // Update conversation
+      console.log('[CHAT_MESSAGE] Updating conversation metadata');
       await supabase
         .from('v2_conversations')
         .update({
@@ -223,11 +807,42 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         })
         .eq('id', params.conversation_id);
 
+      // Log analytics events for both messages
+      if (insertedMessages && insertedMessages.length >= 2) {
+        console.log('[CHAT_MESSAGE] Logging analytics events');
+        const [userMessage, assistantMessage] = insertedMessages;
+        const documentId = getFirstDocumentId(researchContext?.documents_found);
+
+        // Log user message event
+        await logChatEvent({
+          conversation_id: params.conversation_id,
+          message_id: userMessage.id,
+          user_id: userId,
+          document_id: documentId,
+          user_query_length: content.length,
+          // query_intent could be enhanced with intent detection later
+        });
+
+        // Log assistant message event
+        await logChatEvent({
+          conversation_id: params.conversation_id,
+          message_id: assistantMessage.id,
+          user_id: userId,
+          document_id: documentId,
+          ai_response_length: data.message.length,
+          // Note: model_name, tokens, costs, response_time would come from API response
+          // These could be enhanced if the chat API returns them
+        });
+      }
+
       if (isFirstMessage) {
+        console.log('[CHAT_MESSAGE] First message completed, setting isFirstMessage to false');
         setIsFirstMessage(false);
       }
+
+      console.log('[CHAT_MESSAGE] Message send process completed successfully');
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('[CHAT_MESSAGE] Error sending message:', error);
       const errorMessage: V2Message = {
         id: (Date.now() + 1).toString(),
         conversation_id: params.conversation_id,
@@ -334,12 +949,20 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                     Préparation de votre analyse PLU
                   </h2>
                   <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex items-center justify-center gap-2">
-                      <span>⏳ Chargement du document PLU...</span>
-                    </div>
-                    <div className="flex items-center justify-center gap-2">
-                      <span>⏳ Chargement de la carte cadastrale...</span>
-                    </div>
+                    {enrichmentStatus ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <span>⏳ {enrichmentStatus}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-center gap-2">
+                          <span>⏳ Chargement du document PLU...</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-2">
+                          <span>⏳ Chargement de la carte cadastrale...</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -358,10 +981,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                         </p>
                       </div>
                     ) : (
-                      messages.map((message) => (
+                      messages.filter(msg => msg.role !== 'system').map((message) => (
                         <ChatMessageBubble
                           key={message.id}
-                          role={message.role}
+                          role={message.role as 'user' | 'assistant'}
                           content={message.message}
                         />
                       ))
@@ -377,7 +1000,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             )}
           </div>
 
-          <ChatRightPanel isOpen={rightPanelOpen} onClose={() => setRightPanelOpen(false)} />
+          <ChatRightPanel 
+            isOpen={rightPanelOpen} 
+            onClose={() => setRightPanelOpen(false)}
+            mapProps={mapData || undefined}
+          />
         </div>
       </div>
     </div>

@@ -2,6 +2,351 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2025-11-02 (Fix Document Query Loop) - UPDATED
+
+### Fixed - Document Query Loop and RLS Issues
+- **Issue**: Infinite loop in document fetching causing repeated Carto API calls and 400/403 errors
+- **Root Causes**:
+  1. Query used non-existent `city_id` column on `documents` table (400 Bad Request)
+  2. Missing RLS policies on `documents` table blocking INSERT operations (403 Forbidden)
+  3. React Strict Mode double-invoke causing enrichment function to run multiple times
+  4. No guard to prevent re-execution of enrichment process
+  
+- **Solutions**:
+  1. **Fixed Document Query**: Removed `city_id` filter from document lookup query (lines 510-516)
+     - Query now correctly uses only `zone_id` and `zoning_id` columns
+     - Built query conditionally - only adds filters for non-null values
+     - Handles case where both `zoneId` and `zoningId` are null (skips query, completes flow)
+   
+  2. **Added RLS Policies**: Created migration `20251102000012_add_rls_policies_documents.sql`
+     - Enabled RLS on `documents` table
+     - Policy: All authenticated users can SELECT all documents (documents are shared/public resources)
+     - Policy: Authenticated users can INSERT documents (for placeholder creation)
+     - Policy: Only admins can UPDATE/DELETE documents
+   
+  3. **Prevented Re-execution Loop**: Added `useRef` guard `enrichmentInProgressRef`
+     - Checks guard before calling `enrichConversationData()`
+     - Sets guard to `true` at start of enrichment, `false` in finally block
+     - Prevents React Strict Mode double-invoke from causing loops
+     - Guard resets after completion (success or error) to allow future executions
+   
+  4. **Improved Error Handling**:
+     - Wrapped `fetchDocument` call in try-catch to prevent errors from breaking flow
+     - Document INSERT failures are logged but don't stop the process
+     - Always sets `artifactsLoading` to false even on errors to prevent UI stuck state
+     - Added comprehensive error logging with `[DOCUMENT_CHECK_*]` prefixes
+
+### Modified Files
+- `app/chat/[conversation_id]/page.tsx`:
+  - Added `useRef` import
+  - Added `enrichmentInProgressRef` guard to track enrichment state
+  - Fixed document query to remove `city_id` and handle null values conditionally
+  - Added outer try-catch-finally block to reset guard always
+  - Improved error handling for Carto API calls and document creation
+- `supabase/migrations/20251102000012_add_rls_policies_documents.sql` - New migration for documents RLS policies
+
+### Technical Details
+- Document query now works with partial matches (zoneId only, zoningId only, or both)
+- Query is skipped entirely if both IDs are null, but flow still completes
+- RLS policies allow all authenticated users to read/insert documents (shared resources)
+- Guard prevents multiple simultaneous enrichment executions
+- Error handling ensures UI never gets stuck in loading state
+
+## 2025-11-02 (Map and Document Artifact Flow) - UPDATED
+
+### Fixed - Artifact Flow Always Runs
+- **Issue**: Chat page was skipping map and document flow when `city_id` already existed in research record
+- **Root Cause**: Early return when `isEnrichmentComplete` (city_id !== null) prevented map/document stages from running
+- **Solution**: Removed early exit logic; enrichment now reuses existing data and always proceeds to map and document stages
+- **Behavior**: Map and document artifact flow now runs every time chat page loads, whether data is fresh or existing
+- **Result**: Users always see the map load and document retrieval, even when navigating to existing conversations
+
+### Added - Complete Map and Document Display Flow
+- **Map Artifact Component**: Created `components/MapArtifact.tsx` with interactive Leaflet map
+  - Displays map centered on address coordinates with OpenStreetMap tiles
+  - Renders zone polygon with highlighted styling from multipolygon geometry data
+  - Shows address marker at provided coordinates
+  - Includes zoom and pan controls
+  - Handles loading states and missing data gracefully
+  
+- **Zone Geometry Storage**: Added `geometry` JSONB column to `zones` table
+  - Stores multipolygon GeoJSON from Carto API for map visualization
+  - Avoids repeated API calls by caching geometry in database
+  - Migration: `20251102000011_add_geometry_to_zones.sql` with GIN index for performance
+  - Updated `getOrCreateZone()` to accept and store geometry parameter
+  
+- **Enriched Document Retrieval Logic**: Three-case document lookup system
+  - **Case 1**: Full analysis available (content_json + html_content populated) → Display analysis, enable chat
+  - **Case 2**: Source PLU only (source_plu_url but no analysis) → Display PDF, disable chat
+  - **Case 3**: No document record → Create placeholder with typology_id and optional source_plu_url
+  - Lookup by exact match: `(zone_id, zoning_id, city_id)`
+  
+- **Map Loading Stages**: Enhanced enrichment flow with new stages
+  - `map_loading`: Right panel slides in, map starts loading with 2-second animation
+  - `map_ready`: Map rendered with highlighted zone polygon
+  - `document_check`: Document lookup begins
+  - `complete`: Full flow finished
+  - All stages include comprehensive console logging for debugging
+
+### Modified Files
+- `supabase/migrations/20251102000011_add_geometry_to_zones.sql` - New migration for geometry column
+- `components/MapArtifact.tsx` - New Leaflet map component with zone highlighting
+- `components/ChatRightPanel.tsx` - Integrated map artifact with tab switching
+- `lib/geo-enrichment.ts` - Added geometry parameter to `getOrCreateZone()`
+- `app/page.tsx` - Pass zone geometry when creating zones
+- `app/chat/[conversation_id]/page.tsx` - Complete enrichment flow with map and document retrieval
+- `package.json` - Added Leaflet dependencies (leaflet, react-leaflet@4.2.1, @types/leaflet)
+
+### Dependencies
+- `leaflet`: ^1.9.4 (map library)
+- `react-leaflet`: ^4.2.1 (React wrapper, compatible with React 18)
+- `@types/leaflet`: (TypeScript definitions)
+
+### Technical Details
+- Map component uses dynamic imports to avoid SSR issues with Leaflet
+- Geometry stored as GeoJSON multipolygon format
+- Fixed Leaflet marker icon issue in Next.js using CDN-hosted images
+- Right panel slides in smoothly when map loading starts
+- Console logs prefixed: `[MAP_ARTIFACT_*]`, `[DOCUMENT_CHECK_*]`, `[DOCUMENT_DISPLAY]`, `[FLOW_COMPLETE]`
+- System messages filtered from display (only user/assistant shown in chat)
+
+## 2025-11-02 (Research History: Replace zone_id with zoning_id)
+
+### Changed - Research History Schema
+- **Replaced zone_id with zoning_id**: Changed `v2_research_history` table to use `zoning_id` instead of `zone_id` for more precise duplicate detection
+  - **Reason**: Zoning ID is more precise than zone ID since zones belong to zonings (zoning is the parent entity)
+  - **Migration**: Created migration `20251102000010_replace_zone_id_with_zoning_id.sql` that:
+    - Drops `zone_id` column
+    - Adds `zoning_id` column with foreign key to `zonings(id)`
+    - Adds index on `zoning_id` for performance
+  - **Updated Duplicate Detection**: `checkExistingResearch()` now checks for `user_id`, `city_id`, and `zoning_id` instead of `zone_id`
+  - **Benefits**:
+    - More accurate duplicate detection (zoning level is more appropriate than zone level)
+    - Zoning ID is always available (even for RNU cases where we create RNU zoning)
+    - Better reflects the data hierarchy (zoning → zone)
+
+### Modified Files
+- `supabase/migrations/20251102000010_replace_zone_id_with_zoning_id.sql` - New migration file
+- `lib/supabase.ts` - Updated `V2ResearchHistory` type: `zone_id` → `zoning_id`
+- `lib/geo-enrichment.ts`:
+  - `enrichResearchWithGeoData()` - Tracks and uses `zoning_id` instead of `zone_id`
+  - `checkExistingResearch()` - Updated parameter from `zoneId` to `zoningId`, queries by `zoning_id`
+- `app/page.tsx` - Tracks `zoningId`, passes to `checkExistingResearch()`, inserts `zoning_id` in research_history
+- `app/chat/[conversation_id]/page.tsx` - Tracks `zoningId`, updates research_history with `zoning_id`
+- `__tests__/utils/test-helpers.ts` - Updated mock data: `zone_id` → `zoning_id`
+
+### Technical Details
+- All foreign key relationships remain valid (zoning_id → zonings table)
+- Zoning ID is always available because we create/get zoning before zones
+- RNU cases create an RNU zoning, so `zoning_id` is always set
+- Duplicate matching: Same `user_id` + `city_id` + `zoning_id`
+
+## 2025-11-02 (Research History Fix)
+
+### Fixed - Research History Update Loophole
+- **Missing UPDATE RLS Policy**: Added UPDATE policy to `v2_research_history` table to allow linking conversation_id and project_id after record creation
+  - **Root cause**: Table had SELECT and INSERT policies but was missing UPDATE policy, causing all UPDATE operations to silently fail
+  - **Impact**: Conversation and project IDs were not being saved to research history records, breaking the linkage between research, conversations, and projects
+  - **Solution**: Created migration `20251102000009_add_update_policy_research_history.sql` adding RLS policy allowing users to update their own research history records
+  - **Affected locations**:
+    - `app/page.tsx` (line 225-237) - Linking conversation and project IDs after creation
+    - `lib/geo-enrichment.ts` (line 85-98) - Adding city_id and zone_id during enrichment
+    - `app/chat/[conversation_id]/page.tsx` (lines 261-283, 392-417) - Enrichment updates for city and zone IDs
+  - **Error Handling**: Added comprehensive error handling and logging to all research history update operations to catch and diagnose failures
+  - **Logging**: All updates now log errors to console for debugging: `[DB_UPDATE]`, `[ENRICHMENT]` prefixes
+
+#### Notes
+- Non-destructive fix: Only adds missing RLS policy and error handling
+- All existing research history records remain intact
+- Migration is backward compatible with existing code
+- Error handling ensures silent failures are now visible in logs
+- After migration, all research history updates will succeed and properly link conversations/projects
+
+## 2025-11-02 (Rollback - Workflow Restructure)
+
+### Changed - Address Search Workflow
+- **Restructured Address Analysis Flow**: Moved Carto API calls to execute before creating database records
+  - **Previous Flow**: Created project/conversation immediately → Navigated to chat → Enriched data in background
+  - **New Flow**: Call Carto APIs first → Enrich database → Check for duplicates → Create records or navigate to existing conversation
+  - **Benefits**:
+    - User sees loading state immediately on address input page
+    - Duplicate detection happens before creating new records
+    - Database enrichment happens upfront with proper city/zone/zoning IDs
+
+- **Added Duplicate Detection**: Check for existing conversations before creating new ones
+  - Added `checkExistingResearch()` function in `lib/geo-enrichment.ts`
+  - Queries `v2_research_history` for matching `city_id` + `zone_id` + `user_id`
+  - If duplicate found, navigates directly to existing conversation instead of creating new one
+  - Prevents duplicate projects/conversations for same address search
+
+- **Enhanced Loading State**: Added visual loading indicator on address input page
+  - Shows spinner and message "Analyse en cours..." during API calls
+  - Displays helpful text: "Récupération des informations de la commune et du PLU"
+  - Button replaced with loading state during processing
+
+### Modified Files
+- `app/page.tsx` - Complete rewrite of `handleAddressSubmit()`:
+  - Step 1: Call `fetchMunicipality()` API with INSEE code
+  - Step 2: Call `fetchZoneUrba()` API with coordinates
+  - Step 3: Enrich database (get/create city, zoning, zone)
+  - Step 4: Check for existing research with `checkExistingResearch()`
+  - Step 5-9: Create new records only if no duplicate found
+- `components/InitialAddressInput.tsx` - Added loading state UI when `disabled={true}`
+- `lib/geo-enrichment.ts` - Added `checkExistingResearch()` helper function
+
+### Technical Details
+- Duplicate matching: Same `city_id` + `zone_id` (which implicitly means same zoning since zone belongs to zoning)
+- Navigation: If duplicate found, navigates to `/chat/{existing_conversation_id}`
+- Error handling: API failures gracefully handled, continues with fallback data when possible
+- Type safety: Added null checks for `cityId`, `zoneId`, and INSEE codes
+
+## 2025-11-02 (Late Night - Continued)
+
+### Fixed - City Update Error Handling
+- **Error Handling for City Updates**: Added proper error checking and logging to city update operations in `lib/geo-enrichment.ts`
+  - **Issue**: City updates (INSEE code and lowercase name) were failing silently due to missing error handling
+  - **Root cause**: Update query wasn't checking for errors, making debugging impossible
+  - **Solution**: 
+    - Added error destructuring to update query: `const { error: updateError } = await supabase...`
+    - Added error logging: `console.error('Error updating city:', updateError)`
+    - Added success logging: `console.log('Updated city ${cityByName.id} with:', updates)`
+    - Update failures no longer break the flow - function continues with existing city ID even if update fails
+  - **Impact**: Now able to diagnose and fix city update issues (e.g., missing UPDATE RLS policy)
+  - **Related**: UPDATE RLS policy was added separately to migration to allow authenticated users to update cities
+
+#### Notes
+- Error handling follows same pattern as city creation (non-throwing for updates, throwing for creation failures)
+- Logging helps track which cities are being enriched with INSEE codes and lowercase names
+- Graceful degradation: Function continues working even if updates fail (preserves existing functionality)
+
+## 2025-11-02 (Late Night)
+
+### Fixed - Database Connection Issue
+- **Cities Table INSEE Code Support**: Fixed 403/400 error when creating cities in production
+  - Root cause: Frontend was attempting to use INSEE codes (e.g., "38185") as UUID primary keys
+  - Secondary issue: Missing RLS policies on shared reference tables (cities, zonings, zones)
+  - Created migration `20251102000008_add_insee_code_to_cities.sql`:
+    - Added `insee_code VARCHAR` column to cities table
+    - Created unique index on `insee_code` to prevent duplicates
+    - Made column nullable to preserve existing cities without INSEE codes
+    - Enabled RLS on cities, zonings, and zones tables
+    - Added public read policies for all authenticated users
+    - Added authenticated insert policies for cities, zonings, and zones
+  - Enhanced `lib/geo-enrichment.ts` `getOrCreateCity()` function with smart lookup:
+    - Changed query from `.eq('id', inseeCode)` to `.eq('insee_code', inseeCode)`
+    - Changed insert from `{id: inseeCode, name: communeName}` to `{insee_code: inseeCode, name: communeName}`
+    - Now properly uses auto-generated UUID for primary key
+    - **Smart lookup logic**: Tries INSEE code first, falls back to city name search
+    - **Progressive enrichment**: Updates existing cities with INSEE code if found by name but missing INSEE
+    - **No duplicates**: Prevents creating duplicate cities when city exists with only name
+  - Updated `City` TypeScript type in `lib/supabase.ts`:
+    - Added `insee_code: string | null` field to match database schema
+
+#### Notes
+- Non-destructive: existing cities and all foreign key relationships preserved
+- Existing city UUIDs remain unchanged
+- All references from v2_projects, v2_research_history, and zonings tables remain intact
+- Shared reference tables (cities, zonings, zones) are now publicly readable with authenticated insert permissions
+- City lookup now handles legacy data without INSEE codes gracefully
+
+## 2025-11-02 (Late Evening - Continued)
+
+### Fixed - V2 Architecture Consistency
+- **NewConversationModal V2 Migration**: Updated `components/NewConversationModal.tsx` to create v2 projects and conversations instead of v1
+  - Now creates `v2_projects` with user-provided name and project_type
+  - Creates linked `v2_conversation` with conversation_type 'general'
+  - Sets project status to 'active' when user provides a name (vs 'draft' for auto-created)
+  - Added all project types to select dropdown: construction, extension, renovation, amenagement, lotissement, other
+  - Navigates to `/chat/[conversation_id]` with the new v2 conversation
+
+- **Project Page V2 Migration**: Updated `app/project/[id]/page.tsx` to use v2 tables throughout
+  - Changed imports from `ChatConversation`, `ChatMessage` to `V2Conversation`, `V2Message`
+  - Updated all queries: `chat_conversations` → `v2_conversations`, `chat_messages` → `v2_messages`, `research_history` → `v2_research_history`
+  - Added user authentication checks to all fetch functions
+  - Updated message inserts to include `message_type` field
+  - Updated conversation updates to include `message_count` tracking
+  - Changed delete operation to archive (set `is_active: false`, `archived_at`) instead of hard delete
+  - Research history now links to conversation_id
+
+- **ChatSidebar V2 Support**: Updated `components/ChatSidebar.tsx` to work with v2 conversations
+  - Changed from `Conversation[]` to `V2Conversation[]` type
+  - Updated to use `title` and `context_metadata.initial_address` instead of `name` and `address`
+  - Fixed navigation route from `/Conversation/[id]` to `/chat/[id]` for consistency
+
+#### Notes
+- All legacy files now consistently use v2 architecture
+- V1 tables remain untouched and functional (non-destructive migration preserved)
+- Both `/project/[id]` and `/chat/[conversation_id]` routes now work with v2 data
+
+## 2025-11-02 (Late Evening)
+
+### Completed - V2 Migration Tasks
+
+#### Added
+- **ChatLeftSidebar V2 Integration**: Updated `components/ChatLeftSidebar.tsx` to display v2 projects hierarchically
+  - Queries `v2_projects` with nested `v2_conversations` via Supabase select
+  - Displays projects with expandable/collapsible conversation lists
+  - Shows project icon, name (or "Sans nom" for drafts), main address, and conversation count
+  - Auto-expands project containing the current active conversation
+  - Click project toggles expand/collapse; click conversation navigates to chat
+  - Collapsed sidebar state shows project icons (first 5)
+  - Maintains backward compatibility with existing UI patterns
+
+- **Analytics Integration**: Added v2 message analytics logging
+  - Created `lib/analytics.ts` with `logChatEvent()` function
+  - Writes to `analytics.chat_events` table with `source: 'v2'` metadata tag
+  - Supports all analytics fields: tokens, costs, response times, document references, etc.
+  - Updated `app/chat/[conversation_id]/page.tsx` to log analytics after v2_messages insert
+  - Logs both user and assistant messages separately
+  - Graceful error handling (analytics failures don't break chat)
+
+- **V1 to V2 Migration Script**: Created optional migration tools in `supabase/migrations/20251102000007_migrate_v1_to_v2.sql`
+  - **Migration Tracking Table**: `migration_tracking` tracks all migrations with status and error logging
+  - **Single Migration Function**: `migrate_v1_conversation_to_v2()` migrates one v1 conversation to v2
+    - Creates v2_project (draft, unnamed)
+    - Creates v2_conversation linked to project
+    - Migrates all messages to v2_messages (maps document_id to referenced_documents array)
+    - Links document via v2_conversation_documents if document_id exists
+    - Preserves timestamps and conversation turn order
+    - Prevents duplicate migrations
+  - **Batch Migration Function**: `migrate_user_v1_to_v2()` migrates all active v1 conversations for a user
+  - **RLS Policies**: Users can view own migration records, admins can view all
+  - Migration is optional and non-destructive (v1 data remains intact)
+
+#### Changed
+- **ChatLeftSidebar Data Model**: Switched from flat v1 conversations list to hierarchical v2 projects view
+  - Old: Single list of `chat_conversations` 
+  - New: Projects containing nested conversations with expand/collapse UI
+
+#### Files Modified
+- `components/ChatLeftSidebar.tsx` - Complete rewrite for v2 projects display
+- `lib/analytics.ts` - New file for analytics helper functions
+- `app/chat/[conversation_id]/page.tsx` - Added analytics logging after message inserts
+- `supabase/migrations/20251102000007_migrate_v1_to_v2.sql` - New migration file
+
+#### Notes
+- Migration functions use `SECURITY DEFINER` for proper permission handling
+- Analytics integration is flexible - can be enhanced to capture model_name, tokens, costs from API responses
+- Migration script preserves all v1 data and allows selective migration per user
+- Sidebar maintains all existing functionality (collapsed state, navigation, highlighting)
+
+## 2025-11-02 (Evening)
+
+### Enhanced
+- **ProjectCard Component**: Enhanced `components/ProjectCard.tsx` with full feature set from product specification
+  - **Starred Projects**: Added star icon indicator (yellow filled star) when `project.starred === true`
+  - **Draft Styling**: Draft projects with `name === null` now display "Sans nom" in italic, gray text (`text-gray-500 italic`)
+  - **Project Type Display**: Added project type badge with French labels:
+    - construction → "Construction"
+    - extension → "Extension"
+    - renovation → "Rénovation"
+    - amenagement → "Aménagement"
+    - lotissement → "Lotissement"
+    - other → "Autre"
+  - **Color Accent**: Applied `project.color` as subtle left border accent (4px) when set and not default gray
+  - **Visual Hierarchy**: Improved layout with star icon positioned next to project name
+  - All enhancements maintain backward compatibility and existing functionality (navigation, status badges, conversation count)
+
 ## 2025-11-02
 
 ### Added

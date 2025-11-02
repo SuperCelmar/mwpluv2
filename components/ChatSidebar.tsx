@@ -4,11 +4,11 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Conversation } from '@/lib/supabase';
+import { V2Conversation } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
 interface ChatSidebarProps {
-  Conversations: Conversation[];
+  Conversations: V2Conversation[];
   currentConversationId: string;
   onNewConversation: () => void;
 }
@@ -40,26 +40,31 @@ export function ChatSidebar({ Conversations, currentConversationId, onNewConvers
               Aucun projet
             </div>
           ) : (
-            Conversations.map((Conversation) => (
-              <button
-                key={Conversation.id}
-                onClick={() => router.push(`/Conversation/${Conversation.id}`)}
-                className={cn(
-                  'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
-                  'hover:bg-gray-200',
-                  Conversation.id === currentConversationId
-                    ? 'bg-blue-100 text-blue-900 font-medium'
-                    : 'text-gray-700'
-                )}
-              >
-                <div className="font-medium truncate">{Conversation.name}</div>
-                {Conversation.address && (
-                  <div className="text-xs text-gray-500 truncate mt-1">
-                    {Conversation.address}
-                  </div>
-                )}
-              </button>
-            ))
+            Conversations.map((conversation) => {
+              const title = conversation.title || conversation.context_metadata?.initial_address || 'Conversation';
+              const address = conversation.context_metadata?.initial_address;
+              
+              return (
+                <button
+                  key={conversation.id}
+                  onClick={() => router.push(`/chat/${conversation.id}`)}
+                  className={cn(
+                    'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+                    'hover:bg-gray-200',
+                    conversation.id === currentConversationId
+                      ? 'bg-blue-100 text-blue-900 font-medium'
+                      : 'text-gray-700'
+                  )}
+                >
+                  <div className="font-medium truncate">{title}</div>
+                  {address && (
+                    <div className="text-xs text-gray-500 truncate mt-1">
+                      {address}
+                    </div>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
       </ScrollArea>
