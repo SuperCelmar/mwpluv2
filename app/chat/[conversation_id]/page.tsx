@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, V2Conversation, V2Message, V2ResearchHistory } from '@/lib/supabase';
 import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
 import { ChatRightPanel } from '@/components/ChatRightPanel';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
@@ -19,46 +19,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  created_at: string;
-}
-
-interface Project {
-  id: string;
-  user_id: string;
-  name: string;
-  address: string | null;
-  municipality: string | null;
-  gps_coordinates: any;
-  insee_code: string | null;
-  document_loaded: boolean;
-  map_loaded: boolean;
-  artifacts_ready: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [conversation, setConversation] = useState<Project | null>(null);
+  const [messages, setMessages] = useState<V2Message[]>([]);
+  const [conversation, setConversation] = useState<V2Conversation | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [artifactsLoading, setArtifactsLoading] = useState(true);
   const [isFirstMessage, setIsFirstMessage] = useState(true);
+  const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
 
   useEffect(() => {
     checkAuthAndLoadConversation();
   }, [params.conversation_id]);
 
   useEffect(() => {
-    if (conversation && !conversation.artifacts_ready) {
+    if (conversation && conversation.document_count > 0) {
       simulateArtifactLoading();
     }
   }, [conversation]);
@@ -75,26 +54,28 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   const loadConversation = async (currentUserId: string) => {
     try {
-      const { data: project, error: projectError } = await supabase
-        .from('projects')
+      // Load conversation
+      const { data: conv, error: convError } = await supabase
+        .from('v2_conversations')
         .select('*')
         .eq('id', params.conversation_id)
         .eq('user_id', currentUserId)
         .maybeSingle();
 
-      if (projectError) throw projectError;
+      if (convError) throw convError;
 
-      if (!project) {
+      if (!conv) {
         router.push('/');
         return;
       }
 
-      setConversation(project);
+      setConversation(conv);
 
+      // Load messages for this conversation
       const { data: messagesData, error: messagesError } = await supabase
-        .from('messages')
+        .from('v2_messages')
         .select('*')
-        .eq('project_id', params.conversation_id)
+        .eq('conversation_id', params.conversation_id)
         .order('created_at', { ascending: true });
 
       if (messagesError) throw messagesError;
@@ -102,6 +83,19 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       if (messagesData && messagesData.length > 0) {
         setMessages(messagesData);
         setIsFirstMessage(false);
+      }
+
+      // Load research history for context
+      const { data: research } = await supabase
+        .from('v2_research_history')
+        .select('*')
+        .eq('conversation_id', params.conversation_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (research) {
+        setResearchContext(research);
       }
 
       setLoading(false);
@@ -113,37 +107,36 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   const simulateArtifactLoading = async () => {
     setArtifactsLoading(true);
-
-    setTimeout(async () => {
-      await supabase
-        .from('projects')
-        .update({ document_loaded: true })
-        .eq('id', params.conversation_id);
-
-      setConversation((prev) => prev ? { ...prev, document_loaded: true } : null);
-    }, 1500);
-
-    setTimeout(async () => {
-      await supabase
-        .from('projects')
-        .update({ map_loaded: true, artifacts_ready: true })
-        .eq('id', params.conversation_id);
-
-      setConversation((prev) => prev ? { ...prev, map_loaded: true, artifacts_ready: true } : null);
+    // Artifact loading state is now managed locally since it's not in the schema
+    setTimeout(() => {
       setArtifactsLoading(false);
       setRightPanelOpen(true);
     }, 3000);
   };
 
   const handleSendMessage = async (content: string) => {
-    if (!userId || !conversation || sendingMessage || !conversation.artifacts_ready) return;
+    if (!userId || !conversation || sendingMessage) return;
 
     setSendingMessage(true);
 
-    const userMessage: Message = {
+    // Insert user message
+    const userMessage: V2Message = {
       id: Date.now().toString(),
+      conversation_id: params.conversation_id,
+      user_id: userId,
       role: 'user',
-      content,
+      message: content,
+      message_type: 'text',
+      conversation_turn: messages.length + 1,
+      referenced_documents: null,
+      referenced_zones: null,
+      referenced_cities: null,
+      search_context: null,
+      intent_detected: null,
+      confidence_score: null,
+      ai_model_used: null,
+      reply_to_message_id: null,
+      metadata: null,
       created_at: new Date().toISOString(),
     };
 
@@ -155,18 +148,19 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         message: content,
         user_id: userId,
         conversation_id: params.conversation_id,
+        context_metadata: conversation.context_metadata,
       };
 
-      if (conversation.gps_coordinates) {
-        webhookPayload.gps_coordinates = conversation.gps_coordinates;
+      if (researchContext?.geo_lon && researchContext?.geo_lat) {
+        webhookPayload.gps_coordinates = [researchContext.geo_lon, researchContext.geo_lat];
       }
 
-      if (conversation.insee_code) {
-        webhookPayload.insee_code = conversation.insee_code;
+      if (researchContext?.documents_found && researchContext.documents_found.length > 0) {
+        webhookPayload.document_ids = researchContext.documents_found;
       }
 
-      if (conversation.address) {
-        webhookPayload.address = conversation.address;
+      if (researchContext?.geocoded_address) {
+        webhookPayload.address = researchContext.geocoded_address;
       }
 
       const response = await fetch('/api/chat', {
@@ -179,31 +173,54 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
       const data = await response.json();
 
-      const assistantMessage: Message = {
+      const assistantMessage: V2Message = {
         id: (Date.now() + 1).toString(),
+        conversation_id: params.conversation_id,
+        user_id: userId,
         role: 'assistant',
-        content: data.message,
+        message: data.message,
+        message_type: 'text',
+        conversation_turn: messages.length + 2,
+        referenced_documents: researchContext?.documents_found || null,
+        referenced_zones: null,
+        referenced_cities: null,
+        search_context: null,
+        intent_detected: null,
+        confidence_score: null,
+        ai_model_used: null,
+        reply_to_message_id: null,
+        metadata: null,
         created_at: new Date().toISOString(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      await supabase.from('messages').insert([
+      // Insert messages into database
+      await supabase.from('v2_messages').insert([
         {
-          project_id: params.conversation_id,
+          conversation_id: params.conversation_id,
+          user_id: userId,
           role: 'user',
-          content,
+          message: content,
+          conversation_turn: messages.length + 1,
         },
         {
-          project_id: params.conversation_id,
+          conversation_id: params.conversation_id,
+          user_id: userId,
           role: 'assistant',
-          content: data.message,
+          message: data.message,
+          conversation_turn: messages.length + 2,
+          referenced_documents: researchContext?.documents_found || null,
         },
       ]);
 
+      // Update conversation
       await supabase
-        .from('projects')
-        .update({ updated_at: new Date().toISOString() })
+        .from('v2_conversations')
+        .update({
+          last_message_at: new Date().toISOString(),
+          message_count: messages.length + 2,
+        })
         .eq('id', params.conversation_id);
 
       if (isFirstMessage) {
@@ -211,10 +228,23 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = {
+      const errorMessage: V2Message = {
         id: (Date.now() + 1).toString(),
+        conversation_id: params.conversation_id,
+        user_id: userId || '',
         role: 'assistant',
-        content: 'Désolé, une erreur est survenue. Veuillez réessayer.',
+        message: 'Désolé, une erreur est survenue. Veuillez réessayer.',
+        message_type: 'text',
+        conversation_turn: messages.length + 2,
+        referenced_documents: null,
+        referenced_zones: null,
+        referenced_cities: null,
+        search_context: null,
+        intent_detected: null,
+        confidence_score: null,
+        ai_model_used: null,
+        reply_to_message_id: null,
+        metadata: null,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -271,8 +301,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           </div>
 
           <div className="flex-1 text-center">
-            {conversation.address && (
-              <p className="text-sm text-gray-600 truncate">{conversation.address}</p>
+            {conversation?.context_metadata?.initial_address && (
+              <p className="text-sm text-gray-600 truncate">
+                {conversation.context_metadata.initial_address}
+              </p>
             )}
           </div>
 
@@ -303,18 +335,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                   </h2>
                   <div className="space-y-2 text-sm text-gray-600">
                     <div className="flex items-center justify-center gap-2">
-                      {conversation.document_loaded ? (
-                        <span className="text-green-600">✓ Document PLU chargé</span>
-                      ) : (
-                        <span>⏳ Chargement du document PLU...</span>
-                      )}
+                      <span>⏳ Chargement du document PLU...</span>
                     </div>
                     <div className="flex items-center justify-center gap-2">
-                      {conversation.map_loaded ? (
-                        <span className="text-green-600">✓ Carte cadastrale chargée</span>
-                      ) : (
-                        <span>⏳ Chargement de la carte cadastrale...</span>
-                      )}
+                      <span>⏳ Chargement de la carte cadastrale...</span>
                     </div>
                   </div>
                 </div>
@@ -329,7 +353,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                           Vos documents sont prêts !
                         </h3>
                         <p className="text-gray-600">
-                          Posez votre première question sur le PLU de {conversation.municipality || 'cette commune'}
+                          Posez votre première question sur le PLU de{' '}
+                          {conversation?.context_metadata?.city || 'cette commune'}
                         </p>
                       </div>
                     ) : (
@@ -337,7 +362,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                         <ChatMessageBubble
                           key={message.id}
                           role={message.role}
-                          content={message.content}
+                          content={message.message}
                         />
                       ))
                     )}
@@ -346,7 +371,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
                 <ChatInputField
                   onSend={handleSendMessage}
-                  disabled={sendingMessage || !conversation.artifacts_ready}
+                  disabled={sendingMessage || artifactsLoading}
                 />
               </>
             )}

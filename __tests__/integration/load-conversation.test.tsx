@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import ChatConversationPage from '@/app/chat/[conversation_id]/page';
-import { mockRouter, mockParams } from '@/__tests__/utils/test-helpers';
+import { mockRouter, mockParams, createMockV2Conversation } from '@/__tests__/utils/test-helpers';
+import { server } from '@/__tests__/mocks/server';
+import { http, HttpResponse } from 'msw';
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
@@ -9,11 +11,29 @@ vi.mock('next/navigation', () => ({
   useParams: vi.fn(),
 }));
 
-describe('Load Project Flow', () => {
+describe('Load Conversation Flow (v2)', () => {
   beforeEach(() => {
     mockRouter();
-    mockParams({ conversation_id: 'project-new' });
+    mockParams({ conversation_id: 'conversation-123' });
     vi.useFakeTimers();
+
+    // Mock v2 conversation fetch
+    const mockConversation = createMockV2Conversation({
+      id: 'conversation-123',
+      document_count: 1, // Has documents, will trigger artifact loading
+    });
+
+    server.use(
+      http.get('*/rest/v1/v2_conversations', () => {
+        return HttpResponse.json([mockConversation]);
+      }),
+      http.get('*/rest/v1/v2_messages', () => {
+        return HttpResponse.json([]);
+      }),
+      http.get('*/rest/v1/v2_research_history', () => {
+        return HttpResponse.json([]);
+      })
+    );
   });
 
   afterEach(() => {
@@ -21,7 +41,7 @@ describe('Load Project Flow', () => {
   });
 
   it('should show loading screen when artifacts are not ready', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-new' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for initial auth check
     await waitFor(() => {
@@ -35,7 +55,7 @@ describe('Load Project Flow', () => {
   });
 
   it('should update document_loaded state after 1.5s', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-new' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for initial load
     await waitFor(() => {
@@ -52,7 +72,7 @@ describe('Load Project Flow', () => {
   });
 
   it('should update map_loaded and artifacts_ready after 3s', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-new' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for initial load
     await waitFor(() => {
@@ -74,7 +94,7 @@ describe('Load Project Flow', () => {
   });
 
   it('should enable input after artifacts are ready', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-new' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for initial load
     await waitFor(() => {
@@ -82,7 +102,7 @@ describe('Load Project Flow', () => {
     });
 
     // Input should be disabled during loading
-    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers/) as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/) as HTMLTextAreaElement;
     expect(textarea).toBeDisabled();
 
     // Advance time by 3s
@@ -95,7 +115,7 @@ describe('Load Project Flow', () => {
   });
 
   it('should open right panel after artifacts are ready', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-new' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for initial load
     await waitFor(() => {
@@ -112,7 +132,7 @@ describe('Load Project Flow', () => {
   });
 
   it('should show loading indicators in correct order', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-new' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for initial load
     await waitFor(() => {

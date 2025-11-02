@@ -22,15 +22,15 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 
-interface NewProjectModalProps {
+interface NewConversationModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function NewProjectModal({ open, onOpenChange }: NewProjectModalProps) {
+export function NewConversationModal({ open, onOpenChange }: NewConversationModalProps) {
   const router = useRouter();
   const [name, setName] = useState('');
-  const [projectType, setProjectType] = useState<string>('');
+  const [ConversationType, setConversationType] = useState<string>('');
   const [client, setClient] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -55,11 +55,11 @@ export function NewProjectModal({ open, onOpenChange }: NewProjectModalProps) {
       }
 
       const { data, error } = await supabase
-        .from('projects')
+        .from('chat_conversations')
         .insert({
           user_id: user.id,
-          name: name.trim(),
-          project_type: projectType || null,
+          document_id: null, // Will be set after address/document lookup
+          is_active: true,
         })
         .select()
         .single();
@@ -68,10 +68,10 @@ export function NewProjectModal({ open, onOpenChange }: NewProjectModalProps) {
 
       if (data) {
         onOpenChange(false);
-        router.push(`/project/${data.id}`);
+        router.push(`/chat/${data.id}`);
       }
     } catch (err) {
-      console.error('Error creating project:', err);
+      console.error('Error creating Conversation:', err);
       setError('Une erreur est survenue. Veuillez réessayer.');
     } finally {
       setLoading(false);
@@ -81,7 +81,7 @@ export function NewProjectModal({ open, onOpenChange }: NewProjectModalProps) {
   const handleClose = () => {
     if (!loading) {
       setName('');
-      setProjectType('');
+      setConversationType('');
       setClient('');
       setError('');
       onOpenChange(false);
@@ -114,7 +114,7 @@ export function NewProjectModal({ open, onOpenChange }: NewProjectModalProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="type">Type de projet</Label>
-              <Select value={projectType} onValueChange={setProjectType} disabled={loading}>
+              <Select value={ConversationType} onValueChange={setConversationType} disabled={loading}>
                 <SelectTrigger id="type">
                   <SelectValue placeholder="Sélectionner un type" />
                 </SelectTrigger>

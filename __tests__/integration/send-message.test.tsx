@@ -5,9 +5,12 @@ import ChatConversationPage from '@/app/chat/[conversation_id]/page';
 import {
   mockRouter,
   mockParams,
-  createMockProject,
+  createMockV2Conversation,
+  createMockV2ResearchHistory,
   TEST_USER_ID,
 } from '@/__tests__/utils/test-helpers';
+import { server } from '@/__tests__/mocks/server';
+import { http, HttpResponse } from 'msw';
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
@@ -15,17 +18,40 @@ vi.mock('next/navigation', () => ({
   useParams: vi.fn(),
 }));
 
-describe('Send Message Flow', () => {
-  const user = userEvent.setup();
+describe('Send Message Flow (v2)', () => {
+  const user = userEvent.setup({ delay: null });
   let routerMocks: ReturnType<typeof mockRouter>;
 
   beforeEach(() => {
     routerMocks = mockRouter();
-    mockParams({ conversation_id: 'project-123' });
+    mockParams({ conversation_id: 'conversation-123' });
+
+    // Mock v2 conversation and research history
+    const mockConversation = createMockV2Conversation({
+      id: 'conversation-123',
+      document_count: 0, // No docs = no artifact loading
+    });
+
+    const mockResearch = createMockV2ResearchHistory({
+      conversation_id: 'conversation-123',
+      geocoded_address: '15 Rue des Fustiers, 75001 Paris',
+    });
+
+    server.use(
+      http.get('*/rest/v1/v2_conversations', () => {
+        return HttpResponse.json([mockConversation]);
+      }),
+      http.get('*/rest/v1/v2_messages', () => {
+        return HttpResponse.json([]);
+      }),
+      http.get('*/rest/v1/v2_research_history', () => {
+        return HttpResponse.json([mockResearch]);
+      })
+    );
   });
 
-  it('should load chat page with project and display empty state', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-123' }} />);
+  it('should load chat page with conversation and display empty state', async () => {
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for loading to finish
     await waitFor(() => {
@@ -40,7 +66,7 @@ describe('Send Message Flow', () => {
   });
 
   it('should send message and display response', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-123' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     // Wait for page to load
     await waitFor(() => {
@@ -48,7 +74,7 @@ describe('Send Message Flow', () => {
     });
 
     // Type message
-    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers/);
+    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
     await user.type(textarea, 'Quelles sont les règles de construction ?');
 
     // Click send
@@ -68,7 +94,7 @@ describe('Send Message Flow', () => {
   });
 
   it('should disable input during message sending', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'project-123' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     await waitFor(() => {
       expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
@@ -89,13 +115,13 @@ describe('Send Message Flow', () => {
   it('should show error message if API fails', async () => {
     // This would require mocking MSW to return an error response
     // For now, we'll just ensure error handling exists
-    render(<ChatConversationPage params={{ conversation_id: 'project-123' }} />);
+    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
 
     await waitFor(() => {
       expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers/);
+    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
     await user.type(textarea, 'Test');
 
     const sendButton = screen.getByRole('button', { name: '' });
@@ -109,7 +135,7 @@ describe('Send Message Flow', () => {
   });
 
   it('should not send message if artifacts are not ready', async () => {
-    // This test would need to mock a project with artifacts_ready: false
+    // This test would need to mock a conversation with artifacts_ready: false
     // For now, we'll skip as it requires more complex setup
   });
 });

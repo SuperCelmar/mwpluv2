@@ -11,21 +11,21 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-interface DeleteProjectDialogProps {
+interface DeleteConversationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  projectName: string;
+  ConversationName: string;
 }
 
-export function DeleteProjectDialog({ open, onOpenChange, onConfirm, projectName }: DeleteProjectDialogProps) {
+export function DeleteConversationDialog({ open, onOpenChange, onConfirm, ConversationName }: DeleteConversationDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Supprimer le projet ?</AlertDialogTitle>
           <AlertDialogDescription>
-            Êtes-vous sûr de vouloir supprimer le projet "{projectName}" ?
+            Êtes-vous sûr de vouloir supprimer le projet "{ConversationName}" ?
             Cette action est irréversible et supprimera toutes les conversations associées.
           </AlertDialogDescription>
         </AlertDialogHeader>

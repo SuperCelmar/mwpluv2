@@ -5,7 +5,19 @@ const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL ||
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, projectId, address, isInitialAnalysis, new_conversation, user_id, conversation_id, gps_coordinates, insee_code } = await req.json();
+    const {
+      message,
+      ConversationId,
+      address,
+      isInitialAnalysis,
+      new_conversation,
+      user_id,
+      conversation_id,
+      gps_coordinates,
+      insee_code,
+      context_metadata,
+      document_ids,
+    } = await req.json();
 
     if (!message) {
       return NextResponse.json({ error: 'Message requis' }, { status: 400 });
@@ -32,6 +44,16 @@ export async function POST(req: NextRequest) {
 
     if (address) {
       webhookPayload.address = address;
+    }
+
+    // Add v2 context metadata
+    if (context_metadata) {
+      webhookPayload.context_metadata = context_metadata;
+    }
+
+    // Add document IDs (v2 many-to-many relationship)
+    if (document_ids && Array.isArray(document_ids) && document_ids.length > 0) {
+      webhookPayload.document_ids = document_ids;
     }
 
     const webhookResponse = await fetch(N8N_WEBHOOK_URL, {

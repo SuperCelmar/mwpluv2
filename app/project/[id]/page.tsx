@@ -7,19 +7,19 @@ import { ChatSidebar } from '@/components/ChatSidebar';
 import { ChatMessage } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { AddressInput } from '@/components/AddressInput';
-import { NewProjectModal } from '@/components/NewProjectModal';
-import { ProjectActions } from '@/components/ProjectActions';
-import { DeleteProjectDialog } from '@/components/DeleteProjectDialog';
-import { supabase, Project, Message } from '@/lib/supabase';
+import { NewConversationModal } from '@/components/NewConversationModal';
+import { ConversationActions } from '@/components/ConversationActions';
+import { DeleteConversationDialog } from '@/components/DeleteConversationDialog';
+import { supabase, ChatConversation, ChatMessage } from '@/lib/supabase';
 import { AddressSuggestion } from '@/lib/address-api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 
-export default function ProjectPage({ params }: { params: { id: string } }) {
+export default function ConversationPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [project, setProject] = useState<Project | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -37,15 +37,15 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       router.push('/login');
       return;
     }
-    fetchProject();
-    fetchProjects();
+    fetchConversation();
+    fetchConversations();
     fetchMessages();
   };
 
-  const fetchProject = async () => {
+  const fetchConversation = async () => {
     try {
       const { data, error } = await supabase
-        .from('projects')
+        .from('chat_conversations')
         .select('*')
         .eq('id', params.id)
         .maybeSingle();
@@ -57,35 +57,36 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         return;
       }
 
-      setProject(data);
+      setConversation(data);
     } catch (error) {
-      console.error('Error fetching project:', error);
+      console.error('Error fetching conversation:', error);
       router.push('/dashboard');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchProjects = async () => {
+  const fetchConversations = async () => {
     try {
       const { data, error } = await supabase
-        .from('projects')
+        .from('chat_conversations')
         .select('*')
-        .order('updated_at', { ascending: false });
+        .order('last_message_at', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (data) setProjects(data);
+      if (data) setConversations(data);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+      console.error('Error fetching conversations:', error);
     }
   };
 
   const fetchMessages = async () => {
     try {
       const { data, error } = await supabase
-        .from('messages')
+        .from('chat_messages')
         .select('*')
-        .eq('project_id', params.id)
+        .eq('conversation_id', params.id)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -99,25 +100,29 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     setSending(true);
     try {
       const fullAddress = address.properties.label;
-      const municipality = address.properties.city;
 
-      await supabase
-        .from('projects')
-        .update({
-          address: fullAddress,
-          municipality,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', params.id);
-
-      setProject((prev) => prev ? { ...prev, address: fullAddress, municipality } : null);
+      // Store in research_history
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from('research_history')
+          .insert({
+            user_id: user.id,
+            address_input: fullAddress,
+            geo_lon: address.geometry?.coordinates?.[0] || null,
+            geo_lat: address.geometry?.coordinates?.[1] || null,
+            success: true,
+          });
+      }
 
       const { data: userMessage, error: userError } = await supabase
-        .from('messages')
+        .from('chat_messages')
         .insert({
-          project_id: params.id,
+          conversation_id: params.id,
+          user_id: user?.id || '',
           role: 'user',
-          content: fullAddress,
+          message: fullAddress,
+          conversation_turn: messages.length + 1,
         })
         .select()
         .single();
@@ -133,9 +138,9 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: fullAddress,
-          projectId: params.id,
+          conversation_id: params.id,
           address: fullAddress,
-          isInitialAnalysis: true,
+          user_id: user?.id,
         }),
       });
 
@@ -144,11 +149,13 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       const { message: aiResponse } = await response.json();
 
       const { data: assistantMessage, error: assistantError } = await supabase
-        .from('messages')
+        .from('chat_messages')
         .insert({
-          project_id: params.id,
+          conversation_id: params.id,
+          user_id: user?.id || '',
           role: 'assistant',
-          content: aiResponse,
+          message: aiResponse,
+          conversation_turn: messages.length + 2,
         })
         .select()
         .single();
@@ -158,6 +165,15 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       if (assistantMessage) {
         setMessages((prev) => [...prev, assistantMessage]);
       }
+
+      // Update conversation last_message_at
+      await supabase
+        .from('chat_conversations')
+        .update({ 
+          last_message_at: new Date().toISOString(),
+          is_active: true,
+        })
+        .eq('id', params.id);
     } catch (error) {
       console.error('Error saving address:', error);
     } finally {
@@ -168,12 +184,18 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const handleSendMessage = async (content: string) => {
     setSending(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data: userMessage, error: userError } = await supabase
-        .from('messages')
+        .from('chat_messages')
         .insert({
-          project_id: params.id,
+          conversation_id: params.id,
+          user_id: user.id,
+          document_id: conversation?.document_id || null,
           role: 'user',
-          content,
+          message: content,
+          conversation_turn: messages.length + 1,
         })
         .select()
         .single();
@@ -185,8 +207,11 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       }
 
       await supabase
-        .from('projects')
-        .update({ updated_at: new Date().toISOString() })
+        .from('chat_conversations')
+        .update({ 
+          last_message_at: new Date().toISOString(),
+          is_active: true,
+        })
         .eq('id', params.id);
 
       const response = await fetch('/api/chat', {
@@ -194,9 +219,8 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: content,
-          projectId: params.id,
-          address: project?.address,
-          isInitialAnalysis: false,
+          conversation_id: params.id,
+          user_id: user.id,
         }),
       });
 
@@ -205,11 +229,14 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       const { message: aiResponse } = await response.json();
 
       const { data: assistantMessage, error: assistantError } = await supabase
-        .from('messages')
+        .from('chat_messages')
         .insert({
-          project_id: params.id,
+          conversation_id: params.id,
+          user_id: user.id,
+          document_id: conversation?.document_id || null,
           role: 'assistant',
-          content: aiResponse,
+          message: aiResponse,
+          conversation_turn: messages.length + 2,
         })
         .select()
         .single();
@@ -227,35 +254,19 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   };
 
   const handleRename = () => {
-    setNewName(project?.name || '');
-    setIsRenaming(true);
+    // Conversations don't have names in the schema, so this is disabled
+    setIsRenaming(false);
   };
 
   const handleSaveRename = async () => {
-    if (!newName.trim() || newName === project?.name) {
-      setIsRenaming(false);
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .update({ name: newName.trim() })
-        .eq('id', params.id);
-
-      if (error) throw error;
-
-      setProject((prev) => prev ? { ...prev, name: newName.trim() } : null);
-      setIsRenaming(false);
-    } catch (error) {
-      console.error('Error renaming project:', error);
-    }
+    // Conversations don't have names in the schema
+    setIsRenaming(false);
   };
 
   const handleDelete = async () => {
     try {
       const { error } = await supabase
-        .from('projects')
+        .from('chat_conversations')
         .delete()
         .eq('id', params.id);
 
@@ -263,7 +274,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
       router.push('/dashboard');
     } catch (error) {
-      console.error('Error deleting project:', error);
+      console.error('Error deleting conversation:', error);
     }
   };
 
@@ -278,41 +289,25 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     );
   }
 
-  if (!project) {
+  if (!conversation) {
     return null;
   }
 
   return (
     <div className="flex h-screen overflow-hidden">
       <ChatSidebar
-        projects={projects}
-        currentProjectId={params.id}
-        onNewProject={() => setShowNewModal(true)}
+        Conversations={conversations}
+        currentConversationId={params.id}
+        onNewConversation={() => setShowNewModal(true)}
       />
       <div className="flex-1 flex flex-col">
         <header className="border-b bg-white px-6 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              {isRenaming ? (
-                <Input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onBlur={handleSaveRename}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveRename();
-                    if (e.key === 'Escape') setIsRenaming(false);
-                  }}
-                  autoFocus
-                  className="text-xl font-semibold"
-                />
-              ) : (
-                <h1 className="text-xl font-semibold text-gray-900">{project.name}</h1>
-              )}
-              {project.address && (
-                <p className="text-sm text-gray-500 mt-1">{project.address}</p>
-              )}
+              <h1 className="text-xl font-semibold text-gray-900">Conversation PLU</h1>
+              <p className="text-sm text-gray-500 mt-1">Analyse de document PLU</p>
             </div>
-            <ProjectActions onRename={handleRename} onDelete={() => setShowDeleteDialog(true)} />
+            <ConversationActions onRename={handleRename} onDelete={() => setShowDeleteDialog(true)} />
           </div>
         </header>
 
@@ -331,7 +326,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           ) : (
             <div className="divide-y">
               {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
+                <ChatMessage key={message.id} message={{ ...message, content: message.message }} />
               ))}
               {sending && (
                 <div className="flex gap-3 py-4 px-6 bg-white">
@@ -355,12 +350,12 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           />
         )}
       </div>
-      <NewProjectModal open={showNewModal} onOpenChange={setShowNewModal} />
-      <DeleteProjectDialog
+      <NewConversationModal open={showNewModal} onOpenChange={setShowNewModal} />
+      <DeleteConversationDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
         onConfirm={handleDelete}
-        projectName={project.name}
+        ConversationName="cette conversation"
       />
     </div>
   );

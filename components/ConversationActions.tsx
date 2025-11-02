@@ -11,12 +11,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 
-interface ProjectActionsProps {
+interface ConversationActionsProps {
   onRename: () => void;
   onDelete: () => void;
 }
 
-export function ProjectActions({ onRename, onDelete }: ProjectActionsProps) {
+export function ConversationActions({ onRename, onDelete }: ConversationActionsProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

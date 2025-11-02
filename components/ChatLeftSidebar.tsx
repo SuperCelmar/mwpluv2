@@ -41,15 +41,24 @@ export function ChatLeftSidebar({ collapsed, onToggle, onNewConversation }: Chat
       if (!user) return;
 
       const { data, error } = await supabase
-        .from('projects')
-        .select('id, name, address, municipality, updated_at')
+        .from('chat_conversations')
+        .select('id, last_message_at, created_at')
         .eq('user_id', user.id)
-        .order('updated_at', { ascending: false });
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       if (data) {
-        setConversations(data);
+        // Map to interface - we'll need to fetch address separately if needed
+        const mapped = data.map((conv) => ({
+          id: conv.id,
+          name: 'Conversation',
+          address: null,
+          municipality: null,
+          updated_at: conv.last_message_at || conv.created_at,
+        }));
+        setConversations(mapped);
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -153,7 +162,7 @@ export function ChatLeftSidebar({ collapsed, onToggle, onNewConversation }: Chat
                             <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="font-medium truncate">
-                                {conversation.municipality || 'Projet'}
+                                {conversation.municipality || 'Conversation'}
                               </p>
                               <p className="text-xs text-gray-500 truncate mt-0.5">
                                 {conversation.address || conversation.name}

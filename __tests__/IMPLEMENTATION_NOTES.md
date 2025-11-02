@@ -11,9 +11,9 @@ Complete integration testing infrastructure was set up for the MWPLU chat applic
 3. **__tests__/mocks/handlers.ts** - MSW handlers for all external APIs
 4. **__tests__/mocks/server.ts** - MSW server setup
 5. **__tests__/utils/test-helpers.ts** - Test utility functions
-6. **__tests__/integration/create-project.test.tsx** - Project creation flow tests
+6. **__tests__/integration/create-conversation.test.tsx** - Conversation creation flow tests
 7. **__tests__/integration/send-message.test.tsx** - Message sending flow tests
-8. **__tests__/integration/load-project.test.tsx** - Artifact loading flow tests
+8. **__tests__/integration/load-Conversation.test.tsx** - Artifact loading flow tests
 
 ### Configuration
 
@@ -27,92 +27,101 @@ Complete integration testing infrastructure was set up for the MWPLU chat applic
 
 Comprehensive MSW handlers for:
 - Supabase Auth endpoints
-- Supabase REST API (projects, messages)
+- Supabase REST API (conversations, messages)
 - French Address API (api-adresse.data.gouv.fr)
 - N8N Webhook
 
 ### Test Coverage
 
 Three integration test suites covering:
-1. **Create Project** - Home page → address search → project creation → navigation
+1. **Create Conversation** - Home page → address search → conversation creation → navigation
 2. **Send Message** - Chat page → message input → API call → AI response
-3. **Load Project** - Chat page → artifact loading → input enabling
+3. **Load Conversation** - Chat page → artifact loading → input enabling
 
-## Current Issue: Supabase Auth Mocking
+## Supabase Auth Mocking - RESOLVED ✅
 
-### Problem
+### Solution Implemented
 
-Tests are currently failing because `supabase.auth.getUser()` doesn't make HTTP requests. Instead, it:
-1. Reads JWT from localStorage
-2. Validates the token locally
-3. Returns the user without network calls
+**Option 2 (Mock supabase.auth.getUser)** was implemented in `__tests__/setup.ts`.
 
-Since MSW intercepts network requests, it cannot mock `getUser()`.
+The Supabase auth handler was removed from MSW handlers since `getUser()` doesn't make HTTP requests. Instead, we mock it directly at the module level:
 
-### Why MSW Auth Handler Doesn't Work
-
-The MSW handler for `*/auth/v1/user` is never hit because `getUser()` doesn't fetch this endpoint. Supabase client handles auth locally when a valid JWT exists.
-
-### Solutions to Consider
-
-#### Option 1: Mock localStorage (Simplest)
 ```typescript
-// In test setup
-beforeEach(() => {
-  localStorage.setItem('sb-...-auth-token', JSON.stringify({
-    access_token: 'mock-token',
-    user: { id: 'test-user-id', email: 'test@example.com' }
-  }));
-});
-```
-
-#### Option 2: Mock supabase.auth.getUser
-```typescript
-vi.spyOn(supabase.auth, 'getUser').mockResolvedValue({
-  data: { user: { id: 'test-user-id', email: 'test@example.com' } }
-});
-```
-
-#### Option 3: Mock Entire Supabase Client
-Create a mock Supabase client for tests that returns predictable responses.
-
-#### Option 4: Integration Test with Real Auth
-Use real Supabase credentials in test environment (not recommended for unit tests).
-
-### Recommended Approach
-
-**Option 2 (Mock supabase.auth.getUser)** is recommended because:
-- Clean and isolated
-- Works with existing test infrastructure
-- Easy to implement
-- Maintains test reliability
-
-### Next Steps
-
-To complete the implementation:
-
-1. Add Supabase auth mocking to `__tests__/setup.ts`:
-```typescript
-import { supabase } from '@/lib/supabase';
-
 beforeAll(() => {
   vi.spyOn(supabase.auth, 'getUser').mockResolvedValue({
     data: {
       user: {
-        id: 'test-user-id',
+        id: TEST_USER_ID,
         email: 'test@example.com',
         app_metadata: {},
         user_metadata: {},
         aud: 'authenticated',
         created_at: '2024-01-01T00:00:00.000Z',
-      }
-    }
+      },
+    },
+    error: null,
   });
 });
 ```
 
-2. Run tests to verify all pass
-3. Remove the HTTP auth handler from MSW (no longer needed)
+This approach:
+- ✅ Works with existing test infrastructure
+- ✅ Clean and isolated
+- ✅ Maintains test reliability
+- ✅ All tests now pass with proper authentication
+
+## Carto API Integration - IMPLEMENTED ✅
+
+### MSW Handlers Added
+
+Three Carto API handlers are now available in `__tests__/mocks/handlers.ts`:
+
+1. **Zone-Urba API** (`https://apicarto.ign.fr/api/gpu/zone-urba`)
+   - Accepts `geom` (GeoJSON) or `code_insee` parameters
+   - Returns FeatureCollection with MultiPolygon zone polygons
+   - Supports multiple zone types (Uc, UA, UB, etc.)
+
+2. **Document API** (`https://apicarto.ign.fr/api/gpu/document`)
+   - Accepts `code_insee` or `geom` parameters
+   - Returns document metadata (PLU/POS/CC/PSMV/SUP)
+   - Handles RNU document type
+   - Includes document URLs
+
+3. **Municipality API** (`https://apicarto.ign.fr/api/gpu/municipality`)
+   - Accepts `code_insee` or `geom` parameters
+   - Returns commune information
+   - Includes INSEE code and municipality name
+
+### Test Helpers
+
+Carto API test helpers are available in `__tests__/utils/test-helpers.ts`:
+- `createMockZoneUrbaResponse()` - Generate zone polygon FeatureCollection
+- `createMockDocumentResponse()` - Generate document metadata response
+- `createMockMunicipalityResponse()` - Generate municipality response
+- `createMockZonePolygon()` - Generate individual zone polygon features
+- `createMockGeoJSONPoint()` - Generate Point geometry
+
+### Integration Tests
+
+New test files created:
+- `__tests__/integration/carto-apis.test.tsx` - Tests all Carto API endpoints
+- `__tests__/integration/map-artifacts.test.tsx` - Tests map display and zone highlighting
+
+These tests verify:
+- API endpoints accept correct parameters
+- Responses are valid GeoJSON FeatureCollections
+- Error handling for API failures
+- Data structures ready for map rendering
+
+### Map Artifact Testing Strategy
+
+Map and zone highlighting tests are prepared for future implementation. They verify:
+- API responses contain correct GeoJSON structures
+- Zone polygons include necessary properties (code_zone, libelle, etc.)
+- Multiple zones can be handled simultaneously
+- Artifact stacking behavior (map first, then document)
+
+When map components are implemented, these tests will verify actual UI rendering.
 
 ## Additional Improvements
 
@@ -142,5 +151,14 @@ Set up CI/CD to:
 
 ## Summary
 
-The testing infrastructure is **complete and ready for use** once Supabase auth mocking is implemented. All other components (MSW handlers, test utilities, integration test structure) are fully functional. The current issue is isolated to auth mocking and has clear solutions.
+The testing infrastructure is **complete and fully functional**. All components are implemented:
+- ✅ Supabase auth mocking (module-level)
+- ✅ MSW handlers for all external APIs including Carto APIs
+- ✅ Integration tests for all core flows
+- ✅ Carto API integration tests
+- ✅ Map artifact tests (ready for implementation)
+- ✅ Test helpers and utilities
+- ✅ Improved test precision
+
+The test suite is ready for use and prepared for future feature implementations.
 

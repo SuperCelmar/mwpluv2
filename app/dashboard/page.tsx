@@ -5,16 +5,19 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, FolderOpen } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { ProjectCard } from '@/components/ProjectCard';
-import { NewProjectModal } from '@/components/NewProjectModal';
+import { NewConversationModal } from '@/components/NewConversationModal';
 import { Button } from '@/components/ui/button';
-import { supabase, Project, Message } from '@/lib/supabase';
+import { supabase, V2Project, V2Conversation } from '@/lib/supabase';
 import { Skeleton } from '@/components/ui/skeleton';
+
+type ProjectWithConversations = V2Project & {
+  conversations?: V2Conversation[];
+};
 
 export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [lastMessages, setLastMessages] = useState<Record<string, string>>({});
+  const [projects, setProjects] = useState<ProjectWithConversations[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -42,16 +45,25 @@ export default function DashboardPage() {
   const fetchProjects = async () => {
     setLoading(true);
     try {
+      // Query v2 projects with their conversations
       const { data, error } = await supabase
-        .from('projects')
-        .select('*')
+        .from('v2_projects')
+        .select(`
+          *,
+          conversations:v2_conversations(
+            id,
+            last_message_at,
+            message_count,
+            created_at
+          )
+        `)
+        .or('status.eq.draft,status.eq.active')
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
 
       if (data) {
         setProjects(data);
-        await fetchLastMessages(data);
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
@@ -60,27 +72,7 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchLastMessages = async (projects: Project[]) => {
-    const messagesMap: Record<string, string> = {};
-
-    for (const project of projects) {
-      const { data } = await supabase
-        .from('messages')
-        .select('content')
-        .eq('project_id', project.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (data) {
-        messagesMap[project.id] = data.content;
-      }
-    }
-
-    setLastMessages(messagesMap);
-  };
-
-  const handleNewProject = () => {
+  const handleNewConversation = () => {
     setShowNewModal(true);
   };
 
@@ -113,7 +105,7 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Mes projets</h1>
-          <Button onClick={handleNewProject} className="gap-2">
+          <Button onClick={handleNewConversation} className="gap-2">
             <Plus className="h-5 w-5" />
             Nouveau Projet
           </Button>
@@ -128,9 +120,9 @@ export default function DashboardPage() {
             <p className="text-gray-500 mb-6">
               Créez votre premier projet pour commencer !
             </p>
-            <Button onClick={handleNewProject} size="lg" className="gap-2">
+            <Button onClick={handleNewConversation} size="lg" className="gap-2">
               <Plus className="h-5 w-5" />
-              Créer un projet
+              Nouveau Projet
             </Button>
           </div>
         ) : (
@@ -139,13 +131,12 @@ export default function DashboardPage() {
               <ProjectCard
                 key={project.id}
                 project={project}
-                lastMessage={lastMessages[project.id]}
               />
             ))}
           </div>
         )}
       </div>
-      <NewProjectModal open={showNewModal} onOpenChange={handleCloseModal} />
+      <NewConversationModal open={showNewModal} onOpenChange={handleCloseModal} />
     </div>
   );
 }
