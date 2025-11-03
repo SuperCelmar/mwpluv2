@@ -1,5 +1,25 @@
 # Changelog
 
+## 2025-01-XX (Conversation Cache Utilities)
+
+### Added
+- **Conversation Cache Utilities**: Added utility functions and React hook for caching enrichment data
+  - **Files Created**:
+    - `lib/utils/conversationCache.ts` - Cache management utilities
+    - `hooks/useConversationCache.ts` - React hook for cache access
+  - **Features**:
+    - `getCachedConversationData(conversationId)` - Retrieves cached enrichment data with TTL validation (7 days)
+    - `setCachedConversationData(conversationId, data)` - Stores cache in `v2_conversations.context_metadata.enrichment_cache`
+    - `isCacheValid(timestamp)` - Validates cache age against TTL
+    - `useConversationCache(conversationId)` - React hook with automatic loading and refresh capability
+  - **Cache Structure**: Stores zone_geometry (GeoJSON), zone_name, city_name, insee_code, has_analysis, document_summary (optional), cache_version
+  - **TTL**: 7 days (604,800,000 ms)
+  - **Implementation Details**:
+    - Cache stored in `context_metadata.enrichment_cache` nested field (preserves other metadata)
+    - Graceful error handling throughout
+    - TypeScript types for all functions
+    - Comprehensive JSDoc comments
+
 ## 2025-01-XX (Optimize Duplicate Address Check - Run Before API Calls)
 
 ### Optimized
