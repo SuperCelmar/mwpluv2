@@ -1,5 +1,21 @@
 # Changelog
 
+## 2025-11-02 (Artifact Skeleton Loaders)
+
+### Added
+- **Skeleton Loader Components for Progressive Artifact Loading**: Created 4 skeleton components to provide immediate visual feedback while artifact data loads
+  - **ArtifactSkeleton.tsx**: Wrapper component that routes to appropriate skeleton based on type (`'analysis' | 'map' | 'document'`)
+  - **AnalysisSkeleton.tsx**: Card layout with header (1 thick line), body (3 thin lines with varying widths), and footer (1 small line)
+  - **MapSkeleton.tsx**: 16:9 aspect ratio container with gradient background and pulsing map icon in center
+  - **DocumentSkeleton.tsx**: List-style layout with 5 rows, each with icon placeholder and text line (alternating widths)
+  - **Styling**: All components use Tailwind CSS with `animate-pulse` for shimmer effect, following MWPLU brand guidelines (gray-100/200/300 colors, rounded-lg, shadow-sm, 4px grid spacing)
+  - **Files Created**:
+    - `components/chat/ArtifactSkeleton.tsx`
+    - `components/chat/skeletons/AnalysisSkeleton.tsx`
+    - `components/chat/skeletons/MapSkeleton.tsx`
+    - `components/chat/skeletons/DocumentSkeleton.tsx`
+  - **Result**: Provides smooth loading states that match actual artifact card dimensions and styling
+
 ## 2025-11-02 (Sync Inline Cards with Artifact Completion + Fix Zone ID Retrieval)
 
 ### Fixed
