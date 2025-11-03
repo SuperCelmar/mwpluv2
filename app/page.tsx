@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
 import { InitialAddressInput } from '@/components/InitialAddressInput';
 import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
 import { AddressSuggestion } from '@/lib/address-api';
 import { fetchMunicipality, fetchZoneUrba } from '@/lib/carto-api';
 import { getOrCreateCity, getOrCreateZoning, getOrCreateZone, checkExistingResearch } from '@/lib/geo-enrichment';
+import { toast } from '@/hooks/use-toast';
 
 export default function Home() {
   const router = useRouter();
@@ -50,6 +51,52 @@ export default function Home() {
     const lat = address.geometry?.coordinates?.[1];
 
     try {
+      // Step 0: Check for duplicate by coordinates BEFORE expensive API calls
+      if (lon !== undefined && lat !== undefined) {
+        console.log('[DUPLICATE_CHECK] Step 0: Checking for duplicate by coordinates before API calls');
+        
+        const duplicateCheck = await checkDuplicateByCoordinates(lon, lat, userId);
+        
+        if (duplicateCheck.exists && duplicateCheck.conversationId) {
+          console.log('[DUPLICATE_CHECK] Duplicate detected, conversation_id:', duplicateCheck.conversationId);
+          
+          // Log analytics event
+          console.log('[ANALYTICS] Logging duplicate_detected event');
+          try {
+            // Track duplicate detection event
+            // Note: We'll log this to console for now, can be enhanced with analytics table later
+            console.log('[ANALYTICS] duplicate_detected', {
+              user_id: userId,
+              conversation_id: duplicateCheck.conversationId,
+              coordinates: { lon, lat },
+              address: addressLabel,
+            });
+          } catch (analyticsError) {
+            console.error('[ANALYTICS] Error logging duplicate_detected:', analyticsError);
+          }
+          
+          // Show toast notification
+          toast({
+            title: 'Analyse existante trouvée',
+            description: 'Vous avez déjà analysé cette adresse. Redirection...',
+            duration: 3000,
+          });
+          
+          setSendingMessage(false);
+          
+          // Small delay to show toast before navigation
+          setTimeout(() => {
+            router.push(`/chat/${duplicateCheck.conversationId}`);
+          }, 500);
+          
+          return;
+        }
+        
+        console.log('[DUPLICATE_CHECK] No duplicate found, proceeding with API calls');
+      } else {
+        console.log('[DUPLICATE_CHECK] No coordinates available, skipping coordinate-based duplicate check');
+      }
+
       // Step 1: Call Carto Municipality API to get zone and zoning info
       console.log('[API_CALL] Step 1: Fetching municipality data');
       let municipality = null;

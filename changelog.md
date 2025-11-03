@@ -1,5 +1,28 @@
 # Changelog
 
+## 2025-01-XX (Optimize Duplicate Address Check - Run Before API Calls)
+
+### Optimized
+- **Duplicate Check Before API Calls**: Duplicate address check now runs BEFORE expensive IGN API calls
+  - **Problem**: Previously called Carto Municipality API and Zone-Urba API before checking for duplicates, wasting API quota and time
+  - **Solution**: 
+    - Added `checkDuplicateByCoordinates()` function in `lib/supabase.ts` that checks for existing addresses within 50 meters
+    - Uses PostGIS RPC function if available, otherwise falls back to client-side Haversine distance calculation
+    - Moved duplicate check to Step 0 (before all API calls) in `handleAddressSubmit`
+  - **Files Modified**:
+    - `lib/supabase.ts` - Added `checkDuplicateByCoordinates()` and `checkDuplicateByCoordinatesFallback()` functions
+    - `app/page.tsx` - Refactored `handleAddressSubmit` to check duplicates first, before API calls
+    - `app/layout.tsx` - Added `Toaster` component for toast notifications
+  - **Features Added**:
+    - Toast notification shown when duplicate is detected: "Analyse existante trouvée - Vous avez déjà analysé cette adresse. Redirection..."
+    - Analytics logging for `duplicate_detected` events
+    - Graceful handling when coordinates are null (skips coordinate-based check, continues with existing flow)
+  - **Result**: 
+    - No API calls made when duplicate exists
+    - User redirected to existing conversation immediately
+    - API quota saved for duplicate submissions
+    - Faster response time for duplicate addresses
+
 ## 2025-11-02 (Sync Inline Cards with Artifact Completion + Fix Zone ID Retrieval)
 
 ### Fixed

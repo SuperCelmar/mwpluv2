@@ -267,3 +267,119 @@ export interface CartoMunicipality {
   };
   geometry?: any;
 }
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in meters
+ */
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in meters
+}
+
+/**
+ * Check for duplicate research by coordinates within 50 meters
+ * Uses PostGIS ST_DWithin via RPC if available, otherwise falls back to client-side distance calculation
+ * Returns conversation_id if duplicate found, null otherwise
+ */
+export async function checkDuplicateByCoordinates(
+  lon: number,
+  lat: number,
+  userId: string
+): Promise<{ exists: boolean; conversationId?: string }> {
+  console.log('[DUPLICATE_CHECK] checkDuplicateByCoordinates called:', { lon, lat, userId });
+
+  try {
+    // First try RPC function if it exists (requires PostGIS migration)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('check_duplicate_by_coordinates', {
+      p_lon: lon,
+      p_lat: lat,
+      p_user_id: userId,
+      p_distance_meters: 50,
+    });
+
+    if (!rpcError && rpcData && rpcData.length > 0 && rpcData[0]?.conversation_id) {
+      console.log('[DUPLICATE_CHECK] Duplicate found via RPC, conversation_id:', rpcData[0].conversation_id);
+      return {
+        exists: true,
+        conversationId: rpcData[0].conversation_id,
+      };
+    }
+
+    // Fallback: query recent records and calculate distance client-side
+    console.log('[DUPLICATE_CHECK] RPC not available or no match, using fallback method');
+    return await checkDuplicateByCoordinatesFallback(lon, lat, userId);
+  } catch (error) {
+    console.error('[DUPLICATE_CHECK] Error in checkDuplicateByCoordinates:', error);
+    // Fallback on error
+    return await checkDuplicateByCoordinatesFallback(lon, lat, userId);
+  }
+}
+
+/**
+ * Fallback function that queries recent records and calculates distance client-side
+ * This works without requiring PostGIS RPC function
+ */
+async function checkDuplicateByCoordinatesFallback(
+  lon: number,
+  lat: number,
+  userId: string
+): Promise<{ exists: boolean; conversationId?: string }> {
+  try {
+    // Get recent research history records for this user with coordinates
+    const { data, error } = await supabase
+      .from('v2_research_history')
+      .select('conversation_id, geo_lon, geo_lat, created_at')
+      .eq('user_id', userId)
+      .not('conversation_id', 'is', null) // Only records with conversation_id
+      .not('geo_lon', 'is', null) // Must have coordinates
+      .not('geo_lat', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(50); // Check last 50 records (should be enough for most users)
+
+    if (error) {
+      console.error('[DUPLICATE_CHECK] Error in fallback query:', error);
+      return { exists: false };
+    }
+
+    if (!data || data.length === 0) {
+      console.log('[DUPLICATE_CHECK] No records with coordinates found');
+      return { exists: false };
+    }
+
+    // Calculate distance for each record and find the closest within 50m
+    for (const record of data) {
+      if (record.geo_lon !== null && record.geo_lat !== null) {
+        const distance = calculateDistance(
+          lat,
+          lon,
+          Number(record.geo_lat),
+          Number(record.geo_lon)
+        );
+
+        if (distance <= 50) {
+          console.log('[DUPLICATE_CHECK] Duplicate found via fallback, distance:', distance.toFixed(2), 'm');
+          return {
+            exists: true,
+            conversationId: record.conversation_id!,
+          };
+        }
+      }
+    }
+
+    console.log('[DUPLICATE_CHECK] No duplicate found within 50m');
+    return { exists: false };
+  } catch (error) {
+    console.error('[DUPLICATE_CHECK] Error in fallback:', error);
+    return { exists: false };
+  }
+}
