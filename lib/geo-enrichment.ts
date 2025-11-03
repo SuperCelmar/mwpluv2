@@ -177,6 +177,34 @@ export async function getOrCreateCity(inseeCode: string, communeName: string): P
     .single();
 
   if (error) {
+    // Handle duplicate key error (race condition from parallel operations)
+    if (error.code === '23505') {
+      console.log('[ENRICHMENT] City already exists (duplicate key), retrying lookup');
+      // Retry lookup by INSEE code (most reliable)
+      const { data: existingCity } = await supabase
+        .from('cities')
+        .select('id')
+        .eq('insee_code', inseeCode)
+        .maybeSingle();
+      
+      if (existingCity) {
+        console.log('[ENRICHMENT] Found existing city after duplicate key error, city_id:', existingCity.id);
+        return existingCity.id;
+      }
+      
+      // Fallback: try name lookup
+      const { data: existingCityByName } = await supabase
+        .from('cities')
+        .select('id')
+        .ilike('name', communeName.toLowerCase())
+        .maybeSingle();
+      
+      if (existingCityByName) {
+        console.log('[ENRICHMENT] Found existing city by name after duplicate key error, city_id:', existingCityByName.id);
+        return existingCityByName.id;
+      }
+    }
+    
     console.error('[ENRICHMENT] Error creating city:', error);
     throw error;
   }
