@@ -1,5 +1,40 @@
 # Changelog
 
+## 2025-01-XX - Progressive Loading: Show Interface Immediately, Enrich in Background
+
+### Changed
+- **Chat Page Interface**: Refactored to show interface immediately without blocking on enrichment
+  - **Removed Blocking Behavior**: Eliminated `artifactsLoading` spinner that blocked the entire UI
+  - **Immediate UI Display**: Messages, address header, and input field now appear immediately on page load (< 100ms)
+  - **Background Enrichment**: Uses `useEnrichment` hook to run enrichment in background without blocking interaction
+  - **Progressive Artifact Rendering**: Artifacts appear progressively as enrichment completes using skeleton loaders
+  - **Non-Blocking Input**: Users can type and send messages immediately, even during enrichment
+
+### Technical Implementation
+- **Removed State**: Removed `artifactsLoading`, `introStatus`, `enrichmentStep`, `enrichmentStatus` blocking states
+- **Progressive Updates**: Map and document data update progressively as enrichment completes
+- **Status Mapping**: Maps `enrichment.progress.map` and `enrichment.progress.document` to artifact status
+- **Skeleton Loaders**: ChatRightPanel shows `MapSkeleton` and `DocumentSkeleton` during loading
+- **Error Handling**: Enrichment errors show retry buttons but don't break the page
+- **Edge Cases**: 
+  - Already-enriched conversations skip enrichment and show artifacts immediately
+  - Enrichment marked complete but missing data triggers enrichment hook retry
+  - Artifacts show as 'ready' if data exists even when enrichment isn't needed
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx`:
+  - Removed blocking `artifactsLoading` spinner (lines 645-671)
+  - Always show messages and input field immediately
+  - Progressive data updates via `useEnrichment` hook
+  - Map enrichment progress to artifact status for skeleton loaders
+  - Connect retry functions to enrichment hook
+  - Handle edge cases for already-enriched conversations
+
+### User Experience
+- **Before**: Page blocked on enrichment, users waited 2-5 seconds before seeing interface
+- **After**: Interface visible immediately, artifacts load progressively in background
+- **Result**: Users can interact with chat immediately while enrichment runs in background
+
 ## 2025-01-03 - Fixed Zone Creation Race Condition in Enrichment Worker
 
 ### Fixed

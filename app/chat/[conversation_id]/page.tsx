@@ -13,13 +13,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { InlineArtifactCard } from '@/components/InlineArtifactCard';
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-type ArtifactPhase = 'idle' | 'loading' | 'ready';
-
-// Helper to map ArtifactPhase to component status type
-function getArtifactStatus(phase: ArtifactPhase): 'loading' | 'ready' | 'error' {
-  if (phase === 'ready') return 'ready';
-  return 'loading'; // 'idle' and 'loading' both show loading
+// Helper to map enrichment progress to artifact status
+function getArtifactStatus(progress: 'loading' | 'success' | 'error'): 'loading' | 'ready' | 'error' {
+  if (progress === 'success') return 'ready';
+  if (progress === 'error') return 'error';
+  return 'loading';
 }
 
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
@@ -30,48 +28,13 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [messages, setMessages] = useState<V2Message[]>([]);
   const [conversation, setConversation] = useState<V2Conversation | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [artifactsLoading, setArtifactsLoading] = useState(true);
-  const [introStatus, setIntroStatus] = useState<{ map: ArtifactPhase; document: ArtifactPhase }>({
-    map: 'idle',
-    document: 'idle',
-  });
   const [showIntro, setShowIntro] = useState(false);
   const [isFirstMessage, setIsFirstMessage] = useState(true);
   const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
-  const [enrichmentStep, setEnrichmentStep] = useState<'idle' | 'municipality' | 'city_check' | 'documents' | 'zones_check' | 'map_loading' | 'map_ready' | 'document_check' | 'complete'>('idle');
-  const [enrichmentStatus, setEnrichmentStatus] = useState<string>('');
   const [activeArtifactTab, setActiveArtifactTab] = useState<'map' | 'document'>('map');
   
   // Desktop detection for conditional panel opening
   const [isDesktop, setIsDesktop] = useState(false);
-  
-  useEffect(() => {
-    // Check on mount and handle resize
-    const checkDesktop = () => {
-      setIsDesktop(typeof window !== 'undefined' && window.innerWidth >= 768);
-    };
-    
-    checkDesktop();
-    window.addEventListener('resize', checkDesktop);
-    return () => window.removeEventListener('resize', checkDesktop);
-  }, []);
-  
-  // Auto-switch to document tab when document becomes ready (only once)
-  useEffect(() => {
-    // Only auto-switch if:
-    // 1. Document just became ready (transition from loading/idle to ready)
-    // 2. Currently on map tab
-    // 3. We haven't already auto-switched before
-    if (
-      introStatus.document === 'ready' && 
-      activeArtifactTab === 'map' && 
-      !hasAutoSwitchedToDocumentRef.current
-    ) {
-      console.log('[TAB_SWITCH] Document is ready, auto-switching to document tab');
-      setActiveArtifactTab('document');
-      hasAutoSwitchedToDocumentRef.current = true;
-    }
-  }, [introStatus.document, activeArtifactTab]);
   
   // Map and document state
   const [mapData, setMapData] = useState<{ lat: number; lon: number; zoneGeometry?: any; isLoading?: boolean } | null>(null);
@@ -90,89 +53,115 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   // Use enrichment hook for background enrichment
   const enrichment = useEnrichment(params.conversation_id, conversation);
+  
+  useEffect(() => {
+    // Check on mount and handle resize
+    const checkDesktop = () => {
+      setIsDesktop(typeof window !== 'undefined' && window.innerWidth >= 768);
+    };
+    
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+  
+  // Auto-switch to document tab when document becomes ready (only once)
+  useEffect(() => {
+    // Only auto-switch if:
+    // 1. Document just became ready (enrichment.progress.document === 'success')
+    // 2. Currently on map tab
+    // 3. We haven't already auto-switched before
+    if (
+      enrichment.progress.document === 'success' && 
+      activeArtifactTab === 'map' && 
+      !hasAutoSwitchedToDocumentRef.current
+    ) {
+      console.log('[TAB_SWITCH] Document is ready, auto-switching to document tab');
+      setActiveArtifactTab('document');
+      hasAutoSwitchedToDocumentRef.current = true;
+    }
+  }, [enrichment.progress.document, activeArtifactTab]);
 
   useEffect(() => {
     console.log('[CHAT_PAGE] Page initialized, conversation_id:', params.conversation_id);
     checkAuthAndLoadConversation();
   }, [params.conversation_id]);
 
+  // Initialize map data from context metadata on conversation load (if not already set)
+  useEffect(() => {
+    if (!conversation || mapData) return;
+    
+    const contextMetadata = conversation.context_metadata as any;
+    const lon = contextMetadata?.geocoded?.lon;
+    const lat = contextMetadata?.geocoded?.lat;
+    
+    if (lon !== undefined && lat !== undefined) {
+      setMapData({
+        lat,
+        lon,
+        zoneGeometry: undefined,
+        isLoading: enrichment.status === 'enriching' || enrichment.status === 'pending',
+      });
+    }
+  }, [conversation, mapData, enrichment.status]);
+
+  // Update UI state progressively as enrichment completes
   useEffect(() => {
     if (!conversation) return;
-    if (introSequenceStartedRef.current) return;
-    if (messages.length > 0) return;
 
-    startIntroSequence(conversation);
-  }, [conversation, messages]);
+    const data = enrichment.data;
+    
+    // Update zone data progressively
+    if (data && (data.zoneId || data.cityId || data.zoningId)) {
+      setZoneData({
+        zoneId: data.zoneId || null,
+        zoningId: data.zoningId || null,
+        cityId: data.cityId || null,
+        zoneLibelle: null, // Will be fetched if needed
+      });
+    }
 
-  // Update UI state when enrichment completes
-  useEffect(() => {
-    if (enrichment.status === 'complete' && enrichment.data) {
-      const data = enrichment.data;
+    // Update map data progressively when map geometry is available
+    if (data?.mapGeometry && conversation?.context_metadata) {
+      const contextMetadata = conversation.context_metadata as any;
+      const lon = contextMetadata?.geocoded?.lon;
+      const lat = contextMetadata?.geocoded?.lat;
       
-      // Update zone data
-      if (data.zoneId || data.cityId || data.zoningId) {
-        setZoneData({
-          zoneId: data.zoneId || null,
-          zoningId: data.zoningId || null,
-          cityId: data.cityId || null,
-          zoneLibelle: null, // Will be fetched if needed
+      if (lon !== undefined && lat !== undefined) {
+        setMapData((prev) => ({
+          ...(prev || { lat, lon }),
+          zoneGeometry: data.mapGeometry,
+          isLoading: false,
+        }));
+      }
+    }
+
+    // Update document data progressively
+    if (data?.documentData) {
+      setDocumentData({
+        htmlContent: data.documentData.htmlContent,
+        documentId: data.documentData.documentId,
+      });
+    }
+
+    // Reload research context when enrichment completes
+    if (enrichment.status === 'complete') {
+      supabase
+        .from('v2_research_history')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data: research }) => {
+          if (research) {
+            setResearchContext(research);
+          }
         });
-      }
-
-      // Update map data
-      if (conversation?.context_metadata) {
-        const contextMetadata = conversation.context_metadata as any;
-        const lon = contextMetadata?.geocoded?.lon;
-        const lat = contextMetadata?.geocoded?.lat;
-        
-        if (lon !== undefined && lat !== undefined) {
-          setMapData({
-            lat,
-            lon,
-            zoneGeometry: data.mapGeometry || undefined,
-            isLoading: false,
-          });
-          setIntroStatus(prev => ({ ...prev, map: 'ready' }));
-        }
-      }
-
-      // Update document data
-      if (data.documentData) {
-        setDocumentData({
-          htmlContent: data.documentData.htmlContent,
-          documentId: data.documentData.documentId,
-        });
-        if (data.documentData.hasAnalysis) {
-          setIntroStatus(prev => ({ ...prev, document: 'ready' }));
-        }
-      }
-
-      // Close loading state
-      setArtifactsLoading(false);
-      
-      // Reload research context to get updated data
-      if (conversation) {
-        supabase
-          .from('v2_research_history')
-          .select('*')
-          .eq('conversation_id', conversation.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-          .then(({ data: research }) => {
-            if (research) {
-              setResearchContext(research);
-            }
-          });
-      }
-    } else if (enrichment.status === 'error') {
-      console.error('[CHAT_PAGE] Enrichment failed');
-      setArtifactsLoading(false);
     }
   }, [enrichment.status, enrichment.data, conversation]);
 
   useEffect(() => {
-    if (!showIntro) return;
     if (!researchContext) return;
 
     const lat = researchContext.geo_lat;
@@ -197,10 +186,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         lat,
         lon,
         zoneGeometry: prev?.zoneGeometry,
-        isLoading: introStatus.map !== 'ready',
+        isLoading: enrichment.progress.map === 'loading',
       };
     });
-  }, [researchContext, showIntro, introStatus.map]);
+  }, [researchContext, enrichment.progress.map]);
 
   const checkAuthAndLoadConversation = async () => {
     console.log('[CHAT_PAGE] Checking authentication and loading conversation');
@@ -300,21 +289,29 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         } else {
           // Enrichment marked complete but data missing - enrichment hook will handle retry
           console.log('[CHAT_PAGE] Enrichment marked complete but data missing, enrichment hook will handle');
-          setArtifactsLoading(true);
         }
       } else if (needsEnrichment) {
         // Lightweight conversation - enrichment hook will start background enrichment
         console.log('[CHAT_PAGE] Lightweight conversation detected, enrichment hook will start background enrichment');
-        setArtifactsLoading(true);
         introSequenceStartedRef.current = false;
-        setIntroStatus({ map: 'idle', document: 'idle' });
         setShowIntro(false);
         setActiveArtifactTab('map');
-        setMapData(null);
+        
+        // Set initial map data from context metadata if available
+        const contextMetadata = conv.context_metadata as any;
+        const lon = contextMetadata?.geocoded?.lon;
+        const lat = contextMetadata?.geocoded?.lat;
+        if (lon !== undefined && lat !== undefined) {
+          setMapData({
+            lat,
+            lon,
+            zoneGeometry: undefined,
+            isLoading: true,
+          });
+        }
       } else {
         // In-progress or failed - show UI immediately
         console.log('[CHAT_PAGE] Enrichment status:', conv.enrichment_status);
-        setArtifactsLoading(false);
       }
 
       console.log('[CHAT_PAGE] loadConversation completed successfully');
@@ -326,13 +323,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   };
 
   const restoreConversationStateInstant = (research: V2ResearchHistory, conv: V2Conversation) => {
-    console.log('[RESTORE] Starting instant state restoration for complete conversation - Option C: skip all fetching');
+    console.log('[RESTORE] Starting instant state restoration for complete conversation');
     
     // Prevent any intro sequence from running
     introSequenceStartedRef.current = true;
-    
-    // Option C: Skip ALL database fetching - just set basic state and close loading immediately
-    // The right panel will load its data lazily when the user opens it
     
     const lon = research.geo_lon;
     const lat = research.geo_lat;
@@ -358,48 +352,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
     
     // Don't set document data - will load when right panel opens
-    // Don't set intro status - not needed for existing conversations
     // Don't show inline cards - they already have messages
-    setShowIntro(false); // EXPLICITLY hide intro cards for existing conversations
-    
-    // Close loading state IMMEDIATELY - no async operations
-    setArtifactsLoading(false);
-    
-    console.log('[RESTORE] Instant restoration complete - no fetching, messages will appear immediately');
-  };
-
-  const startIntroSequence = (conv: V2Conversation) => {
-    if (introSequenceStartedRef.current) {
-      return;
-    }
-
-    introSequenceStartedRef.current = true;
-
-    const contextMetadata = conv.context_metadata as any;
-    const lon = researchContext?.geo_lon ?? contextMetadata?.geocoded?.lon ?? null;
-    const lat = researchContext?.geo_lat ?? contextMetadata?.geocoded?.lat ?? null;
-
-    setIntroStatus({ map: 'loading', document: 'idle' });
-    setActiveArtifactTab('map');
-    // Only auto-open panel on desktop
-    if (isDesktop) {
-      setRightPanelOpen(true);
-    }
-    setArtifactsLoading(true);
     setShowIntro(false);
-
-    if (lon !== null && lat !== null) {
-      setMapData({
-        lat,
-        lon,
-        zoneGeometry: undefined,
-        isLoading: true,
-      });
-    }
-
-    // Note: Status updates are now handled by actual artifact completion in enrichConversationData
-    // introStatus.map will be set to 'ready' when map finishes loading
-    // introStatus.document will be set to 'ready' when document is retrieved
+    
+    console.log('[RESTORE] Instant restoration complete - messages will appear immediately');
   };
 
   // OLD enrichConversationData function removed - now using useEnrichment hook
@@ -642,61 +598,30 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0">
-            {artifactsLoading ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-6">
-                <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
-                <div className="text-center space-y-3">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Préparation de votre analyse PLU
-                  </h2>
-                  <div className="space-y-2 text-sm text-gray-600">
-                    {enrichmentStatus ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <span>⏳ {enrichmentStatus}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-center gap-2">
-                          <span>{introStatus.map === 'ready' ? '✓' : '⏳'} Chargement de la carte...</span>
-                        </div>
-                        <div className="flex items-center justify-center gap-2">
-                          <span>
-                            {introStatus.document === 'ready' ? '✓' : introStatus.document === 'loading' ? '⏳' : '•'} Préparation du document PLU...
-                          </span>
-                        </div>
-                      </>
-                    )}
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4 max-w-4xl mx-auto">
+                {messages.map((message) => (
+                  <ChatMessageBubble 
+                    key={message.id} 
+                    role={message.role as 'user' | 'assistant'}
+                    content={message.message}
+                  />
+                ))}
+                {sendingMessage && (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Envoi en cours...</span>
                   </div>
-                </div>
+                )}
               </div>
-            ) : (
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4 max-w-4xl mx-auto">
-                  {messages.map((message) => (
-                    <ChatMessageBubble 
-                      key={message.id} 
-                      role={message.role as 'user' | 'assistant'}
-                      content={message.message}
-                    />
-                  ))}
-                  {sendingMessage && (
-                    <div className="flex items-center gap-2 text-gray-500">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Envoi en cours...</span>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            )}
+            </ScrollArea>
 
-            {!artifactsLoading && (
-              <div className="border-t bg-white p-4 shrink-0">
-                <ChatInputField
-                  onSend={handleSendMessage}
-                  disabled={sendingMessage}
-                />
-              </div>
-            )}
+            <div className="border-t bg-white p-4 shrink-0">
+              <ChatInputField
+                onSend={handleSendMessage}
+                disabled={sendingMessage}
+              />
+            </div>
           </div>
 
           <ChatRightPanel
@@ -706,13 +631,25 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             documentHtml={documentData.htmlContent}
             activeTab={activeArtifactTab}
             onTabChange={setActiveArtifactTab}
-            mapStatus={getArtifactStatus(introStatus.map)}
-            documentStatus={getArtifactStatus(introStatus.document)}
+            mapStatus={
+              // If enrichment not needed but we have map data, show as ready
+              enrichment.status === 'pending' && mapData && !mapData.isLoading
+                ? 'ready'
+                : getArtifactStatus(enrichment.progress?.map || 'loading')
+            }
+            documentStatus={
+              // If enrichment not needed but we have document data, show as ready
+              enrichment.status === 'pending' && documentData.htmlContent
+                ? 'ready'
+                : getArtifactStatus(enrichment.progress?.document || 'loading')
+            }
             onRetryMap={() => {
-              console.log('[TODO] Retry map loading');
+              console.log('[CHAT_PAGE] Retrying map enrichment');
+              enrichment.retry();
             }}
             onRetryDocument={() => {
-              console.log('[TODO] Retry document loading');
+              console.log('[CHAT_PAGE] Retrying document enrichment');
+              enrichment.retry();
             }}
           />
         </div>
