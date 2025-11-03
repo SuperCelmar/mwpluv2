@@ -15,3 +15,4 @@ CREATE INDEX IF NOT EXISTS idx_zones_geometry ON zones USING GIN (geometry);
 COMMENT ON COLUMN zones.geometry IS 'GeoJSON multipolygon geometry from Carto API - used for map visualization with highlighted zones';
 COMMENT ON TABLE zones IS 'Shared table: PLU zones within zonings - now includes geometry for map display';
 
+

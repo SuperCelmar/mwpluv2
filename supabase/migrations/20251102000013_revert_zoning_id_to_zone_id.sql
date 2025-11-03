@@ -16,3 +16,4 @@ CREATE INDEX IF NOT EXISTS idx_v2_research_zone ON v2_research_history(zone_id);
 -- Update comment
 COMMENT ON COLUMN v2_research_history.zone_id IS 'Reference to zones table (shared with v1) - used for storing specific zone information';
 
+

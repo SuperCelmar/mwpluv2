@@ -242,11 +242,11 @@ export async function getOrCreateZoning(cityId: string, typezone?: string, isRnu
     .eq('city_id', cityId);
   
   if (zoningCode) {
-    // Look up by code first (preferred method)
+    // Look up by code first (preferred method) - case-sensitive match required
     query = query.eq('code', zoningCode);
   } else {
-    // Fallback to name if no code
-    query = query.eq('name', zoningName);
+    // Fallback to name if no code (case-insensitive)
+    query = query.ilike('name', zoningName);
   }
   
   const { data: existingZoning } = await query.maybeSingle();
@@ -315,13 +315,13 @@ export async function getOrCreateZone(
 ): Promise<string> {
   console.log('[ENRICHMENT] getOrCreateZone called:', { zoningId, zoneCode, zoneName, hasGeometry: !!geometry });
 
-  // Check if zone exists by code within this zoning
+  // Check if zone exists by code within this zoning (case-insensitive)
   console.log('[ENRICHMENT] Looking up existing zone');
   const { data: existingZone } = await supabase
     .from('zones')
     .select('id, geometry')
     .eq('zoning_id', zoningId)
-    .eq('name', zoneCode)
+    .ilike('name', zoneCode)
     .maybeSingle();
 
   if (existingZone) {

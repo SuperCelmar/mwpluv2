@@ -15,3 +15,4 @@ CREATE INDEX IF NOT EXISTS idx_v2_research_zoning ON v2_research_history(zoning_
 -- Update comment
 COMMENT ON COLUMN v2_research_history.zoning_id IS 'Reference to zonings table (shared with v1) - used for duplicate detection';
 
+

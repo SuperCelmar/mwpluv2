@@ -1,5 +1,71 @@
 # Changelog
 
+## 2025-11-02 (Sync Inline Cards with Artifact Completion + Fix Zone ID Retrieval)
+
+### Fixed
+- **Inline Card Status Not Synced with Artifacts**: Cards now become "ready" only when actual artifacts complete processing
+  - **Map Card**: Becomes ready when `mapData.isLoading === false` (map fully rendered with zone highlighted)
+  - **Document Card**: Becomes ready when `documentData.htmlContent` is set (document retrieved and loaded)
+  - Removed timer-based status updates from `startIntroSequence()` that set statuses after delays
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` - Added `setIntroStatus` calls when artifacts complete
+  - **Result**: Cards now accurately reflect artifact loading state instead of showing fake ready states
+
+- **Inline Cards Visibility Fix**: Cards now hide properly after first message
+  - **Root Cause**: Condition was checking `showIntro && messages.length === 0` but `showIntro` was never properly managed
+  - **Solution**: Changed condition to `messages.length === 0 && (introStatus.map === 'ready' || introStatus.document === 'ready')`
+  - Cards now appear when artifacts are ready AND disappear when messages exist, regardless of `showIntro` state
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` - Updated inline cards render condition
+  - **Result**: Cards properly hide after user sends their first message
+
+- **Zone ID Not Retrieved After Failed Creation**: Fixed bug where `getOrCreateZone` errors silently prevented zone ID retrieval
+  - **Root Cause**: `getOrCreateZone` throws on database insert errors, but code didn't catch these errors or query for existing zones
+  - **Solution**: Wrapped all 4 `getOrCreateZone` calls in try-catch blocks with fallback to query existing zones by libelle
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` - Added error handling in Step 3, Step 4 (post), and map loading sections
+  - **Result**: When zone creation fails (e.g., unique constraint violation), code now queries database for existing zone ID and continues properly
+
+- **Zone Lookup Case Sensitivity**: Fixed bug where zone lookups failed due to case mismatch between libelle values
+  - **Root Cause**: PostgreSQL `.eq()` operator is case-sensitive, so queries like `zones.name = 'UBa'` would fail if database had 'uba' or 'UBA'
+  - **Solution**: Changed all zone name lookups from `.eq('name', zoneLibelleFromAPI)` to `.ilike('name', zoneLibelleFromAPI)` for case-insensitive matching
+  - **Files Modified**: 
+    - `app/chat/[conversation_id]/page.tsx` - Updated 6 zone queries in Step 3, Step 4 (post), and fallback sections
+    - `lib/geo-enrichment.ts` - Updated `getOrCreateZone` lookup to use `.ilike()`, and fallback zoning name lookup
+  - **Result**: Zone lookups now succeed regardless of case variations in zone names (e.g., 'UBa', 'uba', 'UBA' all match)
+
+## 2025-11-02 (Fixed Inline Cards Still Showing for Existing Conversations)
+
+### Fixed
+- **Inline Artifact Cards Still Appearing**: Fixed bug where inline artifact cards were still showing for existing conversations with messages
+  - **Root Cause**: `restoreConversationStateInstant` had a comment saying "Don't show inline cards" but never actually called `setShowIntro(false)`
+  - **Solution**:
+    - Added explicit `setShowIntro(false)` call in `restoreConversationStateInstant` function
+    - Added defensive check in render condition: `{showIntro && messages.length === 0 && (` to prevent cards from showing when messages exist
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx`
+  - **Result**: Existing conversations with messages now correctly hide inline artifact cards - only new conversations show them
+
+## 2025-01-15 (Instant Artifact Cards on Conversation Load)
+
+### Fixed
+- **No Loading for Existing Conversations**: Eliminated unnecessary loading states when opening existing conversations
+  - **Problem**: When loading existing conversations, inline artifact cards showed loading spinners even though all data was already in the database
+  - **Root Causes** (Fixed all loopholes):
+    1. State was being reset to idle/loading BEFORE checking if conversation was complete
+    2. useEffect was overwriting restored mapData state with loading state
+    3. Race conditions between multiple state updates causing intermediate renders with incomplete state
+    4. Missing guard to prevent intro sequence from running on restored conversations
+  - **Solution** (Option C - Lazy Loading):
+    - Added detection for "complete" conversations (has `city_id`, `zone_id`, and messages)
+    - Created `restoreConversationStateInstant` function with **zero database fetching**
+    - **Moved state resets**: Only reset state for incomplete/new conversations, skip resets for complete conversations
+    - **Set intro ref**: Set `introSequenceStartedRef.current = true` to prevent intro sequence from running
+    - **Added useEffect guard**: Prevent useEffect from overwriting already-loaded mapData (isLoading: false)
+    - **Option C Implementation**: Skip ALL database fetching in `restoreConversationStateInstant` - just set minimal state (IDs and coordinates) and close loading immediately
+    - **Lazy loading**: Right panel will load geometry and document HTML when user opens it (not eagerly)
+    - **No inline cards**: Don't show inline artifact cards for existing conversations with messages
+    - For complete conversations: Set `artifactsLoading = false` immediately (no async operations), messages appear instantly
+    - For incomplete conversations: Resets state and runs existing enrichment flow with loading sequence and inline cards
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` - Updated `restoreConversationStateInstant` to skip all fetching (Option C)
+  - **Result**: Existing conversations with messages show messages **instantly** with zero loading time - right panel loads data lazily when opened
+
 ## 2025-11-02 (Fixed Enrichment Flow Order - fetchZoneUrba First)
 
 ### Fixed

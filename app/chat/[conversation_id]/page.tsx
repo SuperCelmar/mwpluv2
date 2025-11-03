@@ -80,6 +80,12 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         return prev;
       }
 
+      // If mapData is already loaded and ready (isLoading: false), don't overwrite it
+      // This prevents the effect from overwriting restored state from restoreConversationStateInstant
+      if (prev && prev.isLoading === false) {
+        return prev;
+      }
+
       return {
         lat,
         lon,
@@ -127,11 +133,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
       console.log('[CHAT_PAGE] Conversation loaded successfully, conversation_id:', conv.id);
       setConversation(conv);
-      introSequenceStartedRef.current = false;
-      setIntroStatus({ map: 'idle', document: 'idle' });
-      setShowIntro(false);
-      setActiveArtifactTab('document');
-      setMapData(null);
 
       // Load messages for this conversation
       console.log('[CHAT_PAGE] Loading messages for conversation');
@@ -150,13 +151,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         console.log('[CHAT_PAGE] Messages loaded successfully, count:', messagesData.length);
         setMessages(messagesData);
         setIsFirstMessage(false);
-        setArtifactsLoading(false);
-        setIntroStatus({ map: 'ready', document: 'ready' });
       } else {
         console.log('[CHAT_PAGE] No messages found for conversation');
         setMessages([]);
-        setArtifactsLoading(true);
-        setIntroStatus({ map: 'loading', document: 'idle' });
       }
 
       // Load research history for context
@@ -173,18 +170,46 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         console.log('[CHAT_PAGE] Research context loaded, research_id:', research.id);
         setResearchContext(research);
         
-        // Always start enrichment process (will verify/refresh data even if complete)
-        // This ensures loading phase always shows when redirected from address submission
-        // Check guard to prevent re-execution
-        if (!enrichmentInProgressRef.current) {
-          console.log('[CHAT_PAGE] Starting enrichment process');
-          enrichConversationData(research, conv);
+        // Check if this is a complete conversation with all required data
+        const hasCompleteData = !!(
+          research.city_id && 
+          research.zone_id && 
+          messagesData && 
+          messagesData.length > 0
+        );
+        
+        if (hasCompleteData) {
+          console.log('[CHAT_PAGE] Complete conversation detected, skipping enrichment and restoring instantly');
+          
+          // Restore state instantly for complete conversations (skips state reset)
+          restoreConversationStateInstant(research, conv);
         } else {
-          console.log('[CHAT_PAGE] Enrichment already in progress, skipping');
+          // Incomplete conversation - reset state and start enrichment process
+          console.log('[CHAT_PAGE] Incomplete conversation detected, resetting state and starting enrichment');
+          introSequenceStartedRef.current = false;
+          setIntroStatus({ map: 'idle', document: 'idle' });
+          setShowIntro(false);
+          setActiveArtifactTab('document');
+          setMapData(null);
+          
+          // Start enrichment process
+          if (!enrichmentInProgressRef.current) {
+            console.log('[CHAT_PAGE] Starting enrichment process');
+            enrichConversationData(research, conv);
+          } else {
+            console.log('[CHAT_PAGE] Enrichment already in progress, skipping');
+          }
         }
       } else {
         console.log('[CHAT_PAGE] No research history found');
-        // No research found, hide loading after brief delay
+        // No research found - reset state
+        introSequenceStartedRef.current = false;
+        setIntroStatus({ map: 'idle', document: 'idle' });
+        setShowIntro(false);
+        setActiveArtifactTab('document');
+        setMapData(null);
+        
+        // Hide loading after brief delay
         setTimeout(() => {
           setArtifactsLoading(false);
         }, 500);
@@ -196,6 +221,49 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       console.error('[CHAT_PAGE] Error loading conversation:', error);
       router.push('/');
     }
+  };
+
+  const restoreConversationStateInstant = (research: V2ResearchHistory, conv: V2Conversation) => {
+    console.log('[RESTORE] Starting instant state restoration for complete conversation - Option C: skip all fetching');
+    
+    // Prevent any intro sequence from running
+    introSequenceStartedRef.current = true;
+    
+    // Option C: Skip ALL database fetching - just set basic state and close loading immediately
+    // The right panel will load its data lazily when the user opens it
+    
+    const lon = research.geo_lon;
+    const lat = research.geo_lat;
+    const zoneId = research.zone_id;
+    const cityId = research.city_id;
+    
+    // Set minimal zone data (just IDs, no geometry/libelle fetching)
+    setZoneData({ 
+      zoneId, 
+      zoningId: null, // Will be fetched when needed
+      cityId, 
+      zoneLibelle: null // Will be fetched when needed
+    });
+    
+    // Set minimal map data (just coordinates, geometry will load when right panel opens)
+    if (lon !== null && lat !== null) {
+      setMapData({
+        lat,
+        lon,
+        zoneGeometry: undefined, // Will be fetched when right panel opens
+        isLoading: false, // Not loading - will load lazily
+      });
+    }
+    
+    // Don't set document data - will load when right panel opens
+    // Don't set intro status - not needed for existing conversations
+    // Don't show inline cards - they already have messages
+    setShowIntro(false); // EXPLICITLY hide intro cards for existing conversations
+    
+    // Close loading state IMMEDIATELY - no async operations
+    setArtifactsLoading(false);
+    
+    console.log('[RESTORE] Instant restoration complete - no fetching, messages will appear immediately');
   };
 
   const startIntroSequence = (conv: V2Conversation) => {
@@ -224,20 +292,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       });
     }
 
-    const runSequence = async () => {
-      await sleep(1200);
-
-      setIntroStatus({ map: 'ready', document: 'loading' });
-      setMapData((prev) => (prev ? { ...prev, isLoading: false } : prev));
-      setArtifactsLoading(false);
-      setShowIntro(true);
-
-      await sleep(1200);
-
-      setIntroStatus({ map: 'ready', document: 'ready' });
-    };
-
-    runSequence();
+    // Note: Status updates are now handled by actual artifact completion in enrichConversationData
+    // introStatus.map will be set to 'ready' when map finishes loading
+    // introStatus.document will be set to 'ready' when document is retrieved
   };
 
   const enrichConversationData = async (research: V2ResearchHistory, conv: V2Conversation) => {
@@ -408,16 +465,23 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         // Get or create zone (zoneCode is stored as zones.name in database)
         // Pass geometry to ensure it's saved to database
         if (!zoneId && zoningId) {
-          zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, cachedZoneGeometry);
-          console.log('[ENRICHMENT] Step 3: Zone ID created:', zoneId, 'zone name (libelle):', zoneCode);
-        } else if (zoneLibelleFromAPI && zoningId && !zoneId) {
+          try {
+            zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, cachedZoneGeometry);
+            console.log('[ENRICHMENT] Step 3: Zone ID created:', zoneId, 'zone name (libelle):', zoneCode);
+          } catch (zoneError) {
+            console.error('[ENRICHMENT] Step 3: Error creating zone:', zoneError);
+            // Continue to query existing zone below
+          }
+        }
+        
+        if (zoneLibelleFromAPI && zoningId && !zoneId) {
           // If zoneId wasn't created (already exists), query by libelle to get the correct zoneId
           console.log('[ENRICHMENT] Step 3: Zone may already exist, querying by libelle:', zoneLibelleFromAPI);
           const { data: existingZone } = await supabase
             .from('zones')
             .select('id, name')
             .eq('zoning_id', zoningId)
-            .eq('name', zoneLibelleFromAPI)
+            .ilike('name', zoneLibelleFromAPI)
             .maybeSingle();
           
           if (existingZone) {
@@ -468,8 +532,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             .eq('zoning_id', zoningId);
           
           if (zoneLibelleFromAPI) {
-            // CRITICAL: Filter by libelle to get the correct zone
-            zoneQuery = zoneQuery.eq('name', zoneLibelleFromAPI);
+            // CRITICAL: Filter by libelle to get the correct zone (case-insensitive)
+            zoneQuery = zoneQuery.ilike('name', zoneLibelleFromAPI);
             console.log('[ENRICHMENT] Step 3: Filtering zones by libelle:', zoneLibelleFromAPI);
           } else {
             // Fallback: If no libelle, just take first zone (old behavior)
@@ -567,6 +631,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
               });
               console.log('[ENRICHMENT] Step 4: Document HTML content set from database');
               setEnrichmentStatus('Analyse trouvée ✓');
+              setIntroStatus(prev => ({ ...prev, document: 'ready' }));
             }
             
             // If we have analysis, we can complete early (map will be loaded separately)
@@ -701,16 +766,23 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           
           if (!zoneId && zoningId) {
             // Use cached geometry if available
-            zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, cachedZoneGeometry || firstZone.geometry);
-            console.log('[ENRICHMENT] Step 4 (post): Zone ID created:', zoneId, 'libelle:', zoneCode);
-          } else if (zoneLibelleFromAPI && zoningId && !zoneId) {
+            try {
+              zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, cachedZoneGeometry || firstZone.geometry);
+              console.log('[ENRICHMENT] Step 4 (post): Zone ID created:', zoneId, 'libelle:', zoneCode);
+            } catch (zoneError) {
+              console.error('[ENRICHMENT] Step 4 (post): Error creating zone:', zoneError);
+              // Continue to query existing zone below
+            }
+          }
+          
+          if (zoneLibelleFromAPI && zoningId && !zoneId) {
             // Zone may already exist, query by libelle to get the correct zoneId
             console.log('[ENRICHMENT] Step 4 (post): Zone may already exist, querying by libelle:', zoneLibelleFromAPI);
             const { data: existingZone } = await supabase
               .from('zones')
               .select('id, name')
               .eq('zoning_id', zoningId)
-              .eq('name', zoneLibelleFromAPI)
+              .ilike('name', zoneLibelleFromAPI)
               .maybeSingle();
             
             if (existingZone) {
@@ -756,8 +828,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             .eq('zoning_id', zoningId);
           
           if (zoneLibelleFromAPI) {
-            // CRITICAL: Filter by libelle to get the correct zone
-            zoneQuery = zoneQuery.eq('name', zoneLibelleFromAPI);
+            // CRITICAL: Filter by libelle to get the correct zone (case-insensitive)
+            zoneQuery = zoneQuery.ilike('name', zoneLibelleFromAPI);
             console.log('[ENRICHMENT] Step 4 (post): Filtering zones by libelle:', zoneLibelleFromAPI);
           } else {
             // Fallback: If no libelle, just take first zone (old behavior)
@@ -838,8 +910,13 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           console.log('[ENRICHMENT] Zone libelle from API/cache:', zoneCode);
           
           // Try to get or create zone using the correct libelle and cached geometry
-          zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, cachedZoneGeometry || firstZone.geometry);
-          console.log('[ENRICHMENT] Zone ID created/retrieved:', zoneId, 'libelle:', zoneCode);
+          try {
+            zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, cachedZoneGeometry || firstZone.geometry);
+            console.log('[ENRICHMENT] Zone ID created/retrieved:', zoneId, 'libelle:', zoneCode);
+          } catch (zoneError) {
+            console.error('[ENRICHMENT] Error creating zone:', zoneError);
+            // Continue to query existing zone below
+          }
           
           // If zone already exists but getOrCreateZone didn't return it, query by libelle
           if (!zoneId && zoneLibelleFromAPI) {
@@ -848,7 +925,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
               .from('zones')
               .select('id, name')
               .eq('zoning_id', zoningId)
-              .eq('name', zoneLibelleFromAPI)
+              .ilike('name', zoneLibelleFromAPI)
               .maybeSingle();
             
             if (existingZone) {
@@ -879,8 +956,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             .eq('zoning_id', zoningId);
           
           if (zoneLibelleFromAPI) {
-            // CRITICAL: Filter by libelle to get the correct zone
-            zoneQuery = zoneQuery.eq('name', zoneLibelleFromAPI);
+            // CRITICAL: Filter by libelle to get the correct zone (case-insensitive)
+            zoneQuery = zoneQuery.ilike('name', zoneLibelleFromAPI);
             console.log('[ENRICHMENT] Filtering zones by libelle:', zoneLibelleFromAPI);
           } else {
             // Fallback: If no libelle, just take first zone (old behavior)
@@ -995,11 +1072,16 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                   
                   // Get or create zone using libelle (maps to zones.name)
                   if (!zoneId && zoningId) {
-                    zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, zoneGeometry);
-                    console.log('[MAP_ARTIFACT_START] Zone ID obtained:', zoneId);
-                    
-                    // Update zoneData with the new IDs
-                    setZoneData({ zoneId, zoningId, cityId, zoneLibelle: zoneCode });
+                    try {
+                      zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, zoneGeometry);
+                      console.log('[MAP_ARTIFACT_START] Zone ID obtained:', zoneId);
+                      
+                      // Update zoneData with the new IDs
+                      setZoneData({ zoneId, zoningId, cityId, zoneLibelle: zoneCode });
+                    } catch (zoneError) {
+                      console.error('[MAP_ARTIFACT_START] Error creating zone:', zoneError);
+                      // Zone not created, but geometry is set above
+                    }
                   }
                 }
               }
@@ -1032,6 +1114,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     setEnrichmentStatus('Carte chargée ✓');
     setMapData(prev => prev ? { ...prev, isLoading: false } : null);
     console.log('[MAP_ARTIFACT_READY] Map rendered with zone highlighted');
+    setIntroStatus(prev => ({ ...prev, map: 'ready' }));
     
     // Complete the flow
     // Note: Document check and display was already done in Step 4, and municipality/document APIs were called in Step 5 if needed
@@ -1320,7 +1403,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
               <>
                 <ScrollArea className="flex-1">
                   <div className="max-w-4xl mx-auto py-6 space-y-6">
-                    {showIntro && (
+                    {messages.length === 0 && (introStatus.map === 'ready' || introStatus.document === 'ready') && (
                       <div data-testid="inline-artifact-intro" className="space-y-4 px-4">
                         <ChatMessageBubble role="assistant" content="Carte chargée ✅" />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

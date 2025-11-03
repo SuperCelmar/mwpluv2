@@ -34,3 +34,4 @@ WHERE name = 'RNU' AND code IS NULL;
 -- Add comment
 COMMENT ON COLUMN zonings.code IS 'Short code from Carto API typezone field (U, AU, N, A, etc.) - used for direct mapping from API response';
 
+
