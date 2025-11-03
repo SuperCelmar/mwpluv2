@@ -145,10 +145,11 @@ export type V2Project = {
 export type V2Conversation = {
   id: string;
   user_id: string;
-  project_id: string;  // REQUIRED - always linked to project
+  project_id: string | null;  // Optional - created during enrichment phase
   conversation_type: 'address_analysis' | 'multi_zone' | 'general';
   title: string | null;
   context_metadata: any | null;  // Stores initial address, geocoding, etc.
+  enrichment_status: 'pending' | 'in_progress' | 'completed' | 'failed';
   is_active: boolean;
   archived_at: string | null;
   last_message_at: string | null;

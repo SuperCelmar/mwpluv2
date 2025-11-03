@@ -17,6 +17,12 @@ import { InlineArtifactCard } from '@/components/InlineArtifactCard';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type ArtifactPhase = 'idle' | 'loading' | 'ready';
 
+// Helper to map ArtifactPhase to component status type
+function getArtifactStatus(phase: ArtifactPhase): 'loading' | 'ready' | 'error' {
+  if (phase === 'ready') return 'ready';
+  return 'loading'; // 'idle' and 'loading' both show loading
+}
+
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -35,7 +41,38 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
   const [enrichmentStep, setEnrichmentStep] = useState<'idle' | 'municipality' | 'city_check' | 'documents' | 'zones_check' | 'map_loading' | 'map_ready' | 'document_check' | 'complete'>('idle');
   const [enrichmentStatus, setEnrichmentStatus] = useState<string>('');
-  const [activeArtifactTab, setActiveArtifactTab] = useState<'document' | 'map'>('document');
+  const [activeArtifactTab, setActiveArtifactTab] = useState<'map' | 'document'>('map');
+  
+  // Desktop detection for conditional panel opening
+  const [isDesktop, setIsDesktop] = useState(false);
+  
+  useEffect(() => {
+    // Check on mount and handle resize
+    const checkDesktop = () => {
+      setIsDesktop(typeof window !== 'undefined' && window.innerWidth >= 768);
+    };
+    
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+  
+  // Auto-switch to document tab when document becomes ready (only once)
+  useEffect(() => {
+    // Only auto-switch if:
+    // 1. Document just became ready (transition from loading/idle to ready)
+    // 2. Currently on map tab
+    // 3. We haven't already auto-switched before
+    if (
+      introStatus.document === 'ready' && 
+      activeArtifactTab === 'map' && 
+      !hasAutoSwitchedToDocumentRef.current
+    ) {
+      console.log('[TAB_SWITCH] Document is ready, auto-switching to document tab');
+      setActiveArtifactTab('document');
+      hasAutoSwitchedToDocumentRef.current = true;
+    }
+  }, [introStatus.document, activeArtifactTab]);
   
   // Map and document state
   const [mapData, setMapData] = useState<{ lat: number; lon: number; zoneGeometry?: any; isLoading?: boolean } | null>(null);
@@ -50,6 +87,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   // Guard to prevent re-execution of enrichment (handles React Strict Mode double-invoke)
   const enrichmentInProgressRef = useRef(false);
   const introSequenceStartedRef = useRef(false);
+  // Track if we've already auto-switched to document tab (prevents re-switching when user manually goes back to map)
+  const hasAutoSwitchedToDocumentRef = useRef(false);
 
   useEffect(() => {
     console.log('[CHAT_PAGE] Page initialized, conversation_id:', params.conversation_id);
@@ -156,7 +195,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         setMessages([]);
       }
 
-      // Load research history for context
+      // Check enrichment status and start background enrichment if needed
+      console.log('[CHAT_PAGE] Checking enrichment status:', conv.enrichment_status);
+      
+      // Load research history for context (if exists)
       console.log('[CHAT_PAGE] Loading research history for context');
       const { data: research } = await supabase
         .from('v2_research_history')
@@ -169,8 +211,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       if (research) {
         console.log('[CHAT_PAGE] Research context loaded, research_id:', research.id);
         setResearchContext(research);
-        
-        // Check if this is a complete conversation with all required data
+      }
+
+      // Determine if we need to start enrichment
+      const needsEnrichment = conv.enrichment_status === 'pending' || !conv.project_id;
+      const isEnriched = conv.enrichment_status === 'completed' && conv.project_id;
+      
+      if (isEnriched && research) {
+        // Complete conversation - check if fully enriched
         const hasCompleteData = !!(
           research.city_id && 
           research.zone_id && 
@@ -180,39 +228,31 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         
         if (hasCompleteData) {
           console.log('[CHAT_PAGE] Complete conversation detected, skipping enrichment and restoring instantly');
-          
-          // Restore state instantly for complete conversations (skips state reset)
           restoreConversationStateInstant(research, conv);
         } else {
-          // Incomplete conversation - reset state and start enrichment process
-          console.log('[CHAT_PAGE] Incomplete conversation detected, resetting state and starting enrichment');
-          introSequenceStartedRef.current = false;
-          setIntroStatus({ map: 'idle', document: 'idle' });
-          setShowIntro(false);
-          setActiveArtifactTab('document');
-          setMapData(null);
-          
-          // Start enrichment process
+          // Enrichment marked complete but data missing - start enrichment
+          console.log('[CHAT_PAGE] Enrichment marked complete but data missing, starting enrichment');
           if (!enrichmentInProgressRef.current) {
-            console.log('[CHAT_PAGE] Starting enrichment process');
-            enrichConversationData(research, conv);
-          } else {
-            console.log('[CHAT_PAGE] Enrichment already in progress, skipping');
+            enrichConversationData(research || null, conv);
           }
         }
-      } else {
-        console.log('[CHAT_PAGE] No research history found');
-        // No research found - reset state
+      } else if (needsEnrichment) {
+        // Lightweight conversation - start background enrichment immediately
+        console.log('[CHAT_PAGE] Lightweight conversation detected, starting background enrichment');
+        setArtifactsLoading(true);
         introSequenceStartedRef.current = false;
         setIntroStatus({ map: 'idle', document: 'idle' });
         setShowIntro(false);
-        setActiveArtifactTab('document');
+        setActiveArtifactTab('map');
         setMapData(null);
         
-        // Hide loading after brief delay
-        setTimeout(() => {
-          setArtifactsLoading(false);
-        }, 500);
+        if (!enrichmentInProgressRef.current) {
+          enrichConversationData(research || null, conv);
+        }
+      } else {
+        // In-progress or failed - show UI immediately
+        console.log('[CHAT_PAGE] Enrichment status:', conv.enrichment_status);
+        setArtifactsLoading(false);
       }
 
       console.log('[CHAT_PAGE] loadConversation completed successfully');
@@ -278,8 +318,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     const lat = researchContext?.geo_lat ?? contextMetadata?.geocoded?.lat ?? null;
 
     setIntroStatus({ map: 'loading', document: 'idle' });
-    setActiveArtifactTab('document');
-    setRightPanelOpen(true);
+    setActiveArtifactTab('map');
+    // Only auto-open panel on desktop
+    if (isDesktop) {
+      setRightPanelOpen(true);
+    }
     setArtifactsLoading(true);
     setShowIntro(false);
 
@@ -297,7 +340,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     // introStatus.document will be set to 'ready' when document is retrieved
   };
 
-  const enrichConversationData = async (research: V2ResearchHistory, conv: V2Conversation) => {
+  const enrichConversationData = async (research: V2ResearchHistory | null, conv: V2Conversation) => {
     // Prevent re-execution if already in progress
     if (enrichmentInProgressRef.current) {
       console.log('[ENRICHMENT] enrichConversationData already in progress, skipping');
@@ -305,7 +348,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
     
     console.log('[ENRICHMENT] enrichConversationData called');
-    console.log('[ENRICHMENT] Research ID:', research.id, 'Conversation ID:', conv.id);
+    console.log('[ENRICHMENT] Conversation ID:', conv.id, 'Has research:', !!research);
     
     // Set guard to prevent re-execution
     enrichmentInProgressRef.current = true;
@@ -313,27 +356,113 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     // Show loading state during enrichment
     setArtifactsLoading(true);
     
+    // Update enrichment_status to 'in_progress'
+    await supabase
+      .from('v2_conversations')
+      .update({ enrichment_status: 'in_progress' })
+      .eq('id', conv.id);
+    
     try {
     
     const contextMetadata = conv.context_metadata as any;
     const inseeCode = contextMetadata?.insee_code || '';
     const lon = contextMetadata?.geocoded?.lon;
     const lat = contextMetadata?.geocoded?.lat;
+    const addressInput = contextMetadata?.initial_address || '';
     
-    console.log('[ENRICHMENT] Context metadata extracted:', { inseeCode, lon, lat });
+    console.log('[ENRICHMENT] Context metadata extracted:', { inseeCode, lon, lat, addressInput });
     
-    if (!inseeCode) {
-      console.error('[ENRICHMENT] No INSEE code in context metadata');
-      // Still show loading briefly before hiding
-      setTimeout(() => {
-        setArtifactsLoading(false);
-      }, 1000);
+    if (!inseeCode || !lon || !lat) {
+      console.error('[ENRICHMENT] Missing required data:', { inseeCode, lon, lat });
+      await supabase
+        .from('v2_conversations')
+        .update({ enrichment_status: 'failed' })
+        .eq('id', conv.id);
+      setArtifactsLoading(false);
       return;
     }
 
+    // Step 0: Ensure we have a valid user ID (use conversation's user_id as source of truth)
+    const enrichmentUserId = conv.user_id;
+    if (!enrichmentUserId) {
+      console.error('[ENRICHMENT] No user_id in conversation');
+      await supabase
+        .from('v2_conversations')
+        .update({ enrichment_status: 'failed' })
+        .eq('id', conv.id);
+      setArtifactsLoading(false);
+      return;
+    }
+
+    // Step 1: Create project if it doesn't exist
+    let projectId = conv.project_id;
+    if (!projectId) {
+      console.log('[ENRICHMENT] Creating project for conversation');
+      const { data: project, error: projectError } = await supabase
+        .from('v2_projects')
+        .insert({
+          user_id: enrichmentUserId,
+          status: 'draft',
+          main_address: addressInput,
+          geo_lon: lon,
+          geo_lat: lat,
+        })
+        .select('id')
+        .single();
+      
+      if (projectError || !project) {
+        console.error('[ENRICHMENT] Error creating project:', projectError);
+        await supabase
+          .from('v2_conversations')
+          .update({ enrichment_status: 'failed' })
+          .eq('id', conv.id);
+        setArtifactsLoading(false);
+        throw new Error(`Failed to create project: ${projectError?.message}`);
+      }
+      
+      projectId = project.id;
+      
+      // Link conversation to project
+      await supabase
+        .from('v2_conversations')
+        .update({ project_id: projectId })
+        .eq('id', conv.id);
+      
+      console.log('[ENRICHMENT] Project created and linked, project_id:', projectId);
+    }
+
+    // Step 2: Create research_history if it doesn't exist
+    let researchId: string | null = null;
+    if (!research) {
+      console.log('[ENRICHMENT] Creating research_history');
+      const { data: newResearch, error: researchError } = await supabase
+        .from('v2_research_history')
+        .insert({
+          user_id: enrichmentUserId,
+          conversation_id: conv.id,
+          project_id: projectId,
+          address_input: addressInput,
+          geo_lon: lon,
+          geo_lat: lat,
+          success: true,
+        })
+        .select('id')
+        .single();
+      
+      if (researchError || !newResearch) {
+        console.error('[ENRICHMENT] Error creating research_history:', researchError);
+        // Continue - we can still enrich without research_history
+      } else {
+        researchId = newResearch.id;
+        console.log('[ENRICHMENT] Research history created, id:', researchId);
+      }
+    } else {
+      researchId = research.id;
+    }
+
     // Initialize variables from research or fetch new data
-    let cityId: string | null = research.city_id;
-    let zoneId: string | null = research.zone_id;
+    let cityId: string | null = research?.city_id || null;
+    let zoneId: string | null = research?.zone_id || null;
     let zoningId: string | null = null;
     let isRnuStatus = false; // Will be set during enrichment or assumed false
     
@@ -344,7 +473,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     console.log('[ENRICHMENT] Starting with existing data:', { 
       hasCityId: !!cityId, 
       hasZoneId: !!zoneId,
-      researchId: research.id 
+      researchId 
     });
     
     // If we don't have basic enrichment data yet, fetch it
@@ -404,29 +533,31 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         console.log('[ENRICHMENT] Step 2: City ID obtained:', cityId);
         
         // Update research_history with city_id
-        console.log('[ENRICHMENT] Step 2: Updating research_history with city_id');
-        const { error: cityUpdateError } = await supabase
-          .from('v2_research_history')
-          .update({
-            city_id: cityId,
-            geocoded_address: communeName,
-          })
-          .eq('id', research.id);
-        
-        if (cityUpdateError) {
-          console.error('[ENRICHMENT] Step 2: Failed to update research history with city:', cityUpdateError);
-        }
-        
-        // Reload research context
-        const { data: updatedResearch } = await supabase
-          .from('v2_research_history')
-          .select('*')
-          .eq('id', research.id)
-          .single();
-        
-        if (updatedResearch) {
-          console.log('[ENRICHMENT] Step 2: Research context updated');
-          setResearchContext(updatedResearch);
+        if (researchId) {
+          console.log('[ENRICHMENT] Step 2: Updating research_history with city_id');
+          const { error: cityUpdateError } = await supabase
+            .from('v2_research_history')
+            .update({
+              city_id: cityId,
+              geocoded_address: communeName,
+            })
+            .eq('id', researchId);
+          
+          if (cityUpdateError) {
+            console.error('[ENRICHMENT] Step 2: Failed to update research history with city:', cityUpdateError);
+          }
+          
+          // Reload research context
+          const { data: updatedResearch } = await supabase
+            .from('v2_research_history')
+            .select('*')
+            .eq('id', researchId)
+            .single();
+          
+          if (updatedResearch) {
+            console.log('[ENRICHMENT] Step 2: Research context updated');
+            setResearchContext(updatedResearch);
+          }
         }
       } else {
         console.log('[ENRICHMENT] Step 2: Skipped - missing communeName or municipalityInseeCode');
@@ -558,14 +689,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       }
       
       // Update research_history with zone_id
-      if (cityId && zoneId) {
+      if (cityId && zoneId && researchId) {
         console.log('[ENRICHMENT] Step 3: Updating research_history with zone_id:', zoneId);
         const { error: zoneUpdateError } = await supabase
           .from('v2_research_history')
           .update({
             zone_id: zoneId,
           })
-          .eq('id', research.id);
+          .eq('id', researchId);
         
         if (zoneUpdateError) {
           console.error('[ENRICHMENT] Step 3: Failed to update research history with zone:', zoneUpdateError);
@@ -573,15 +704,17 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       }
       
       // Reload research context
-      const { data: finalResearch } = await supabase
-        .from('v2_research_history')
-        .select('*')
-        .eq('id', research.id)
-        .single();
-      
-      if (finalResearch) {
-        console.log('[ENRICHMENT] Step 3: Final research context loaded');
-        setResearchContext(finalResearch);
+      if (researchId) {
+        const { data: finalResearch } = await supabase
+          .from('v2_research_history')
+          .select('*')
+          .eq('id', researchId)
+          .single();
+        
+        if (finalResearch) {
+          console.log('[ENRICHMENT] Step 3: Final research context loaded');
+          setResearchContext(finalResearch);
+        }
       }
     } catch (error) {
       console.error('[ENRICHMENT] Step 3: Error in zones check:', error);
@@ -1012,9 +1145,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     setEnrichmentStep('map_loading');
     setEnrichmentStatus('Chargement de la carte...');
     
-    // Slide in right panel immediately
+    // Slide in right panel immediately (desktop only)
     console.log('[MAP_ARTIFACT_START] Opening right panel');
-    setRightPanelOpen(true);
+    if (isDesktop) {
+      setRightPanelOpen(true);
+    }
     
     // Fetch geometry if we need it - use cached geometry first to avoid redundant API calls
     let zoneGeometry: any = null;
@@ -1116,6 +1251,48 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     console.log('[MAP_ARTIFACT_READY] Map rendered with zone highlighted');
     setIntroStatus(prev => ({ ...prev, map: 'ready' }));
     
+    // Update project with enriched data
+    if (projectId && (cityId || zoneId)) {
+      console.log('[ENRICHMENT] Updating project with enriched data');
+      await supabase
+        .from('v2_projects')
+        .update({
+          main_city_id: cityId,
+          main_zone_id: zoneId,
+        })
+        .eq('id', projectId);
+    }
+    
+    // Update research_history with enriched data if it exists
+    if (researchId && (cityId || zoneId)) {
+      console.log('[ENRICHMENT] Updating research_history with enriched data');
+      await supabase
+        .from('v2_research_history')
+        .update({
+          city_id: cityId,
+          zone_id: zoneId,
+        })
+        .eq('id', researchId);
+      
+      // Reload research context
+      const { data: updatedResearch } = await supabase
+        .from('v2_research_history')
+        .select('*')
+        .eq('id', researchId)
+        .single();
+      
+      if (updatedResearch) {
+        setResearchContext(updatedResearch);
+      }
+    }
+    
+    // Mark enrichment as completed
+    console.log('[ENRICHMENT] Marking enrichment as completed');
+    await supabase
+      .from('v2_conversations')
+      .update({ enrichment_status: 'completed' })
+      .eq('id', conv.id);
+    
     // Complete the flow
     // Note: Document check and display was already done in Step 4, and municipality/document APIs were called in Step 5 if needed
     setEnrichmentStep('complete');
@@ -1125,8 +1302,15 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     } catch (error) {
       // Catch-all for any errors in the enrichment process
       console.error('[ENRICHMENT] Error in enrichConversationData:', error);
+      
+      // Mark enrichment as failed
+      await supabase
+        .from('v2_conversations')
+        .update({ enrichment_status: 'failed' })
+        .eq('id', conv.id);
+      
       setEnrichmentStep('complete');
-      setEnrichmentStatus('');
+      setEnrichmentStatus('Erreur lors de l\'enrichissement');
       setArtifactsLoading(false);
     } finally {
       // Always reset the guard to allow future executions
@@ -1480,6 +1664,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             activeTab={activeArtifactTab}
             onTabChange={(tab) => setActiveArtifactTab(tab)}
             documentHtml={documentData.htmlContent}
+            mapStatus={getArtifactStatus(introStatus.map)}
+            documentStatus={getArtifactStatus(introStatus.document)}
+            onRetryMap={() => {
+              console.log('[TODO Phase 5] Retry map loading');
+            }}
+            onRetryDocument={() => {
+              console.log('[TODO Phase 5] Retry document loading');
+            }}
           />
         </div>
       </div>
