@@ -1,5 +1,23 @@
 # Changelog
 
+## 2025-01-03 - Fixed Zone Creation Race Condition in Enrichment Worker
+
+### Fixed
+- **Zone Creation Never Called**: Fixed critical issue where `getOrCreateZone()` was never successfully called, leaving `zone_id` as null in enriched conversations
+  - **Root Cause**: Race condition in parallel operation execution - the `zone` operation was checking for `result.zoningId` before the parallel `zoning` operation completed, failing validation, and throwing an error that was silently caught by `Promise.allSettled()`
+  - **Solution**: Implemented proper polling mechanism with 20 retries (2 seconds total) to wait for `result.zoningId` to be set by the parallel zoning operation
+  - Added fallback mechanism: if polling times out, the zone operation creates the zoning itself using the same logic
+  - Enhanced error logging with detailed state information to diagnose future issues
+  - **Files Modified**: `lib/workers/conversationEnrichment.ts` (zone operation, lines 277-330)
+  - **Result**: Zone creation now works reliably with proper dependency management between parallel operations
+
+### Technical Details
+- Zone operation now waits up to 2 seconds for `result.zoningId` to be set by parallel operations
+- Detailed logging at each stage: polling attempts, fallback creation, validation state, success/failure
+- Improved error messages that include both `zoningId` and `zoneCode` values for debugging
+- Fallback mechanism ensures zone creation succeeds even if the parallel zoning operation is delayed
+- All operations still run in parallel, but dependencies are now properly managed with polling
+
 ## 2025-01-XX - Mobile Panel Behavior and Tab Auto-Switch
 
 ### Fixed
