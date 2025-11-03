@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
 import { InitialAddressInput } from '@/components/InitialAddressInput';
 import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
 import { AddressSuggestion } from '@/lib/address-api';
-import { fetchMunicipality, fetchZoneUrba } from '@/lib/carto-api';
-import { getOrCreateCity, getOrCreateZoning, getOrCreateZone, checkExistingResearch } from '@/lib/geo-enrichment';
+import { createLightweightConversation } from '@/lib/supabase/queries';
+import { toast } from '@/hooks/use-toast';
 
 export default function Home() {
   const router = useRouter();
@@ -50,201 +50,56 @@ export default function Home() {
     const lat = address.geometry?.coordinates?.[1];
 
     try {
-      // Step 1: Call Carto Municipality API to get zone and zoning info
-      console.log('[API_CALL] Step 1: Fetching municipality data');
-      let municipality = null;
-      try {
-        municipality = await fetchMunicipality({ insee_code: inseeCode });
-        if (municipality) {
-          console.log('[API_CALL] Municipality fetched successfully:', municipality.properties?.name);
-        } else {
-          console.warn('[API_CALL] Municipality API returned no data');
-        }
-      } catch (error) {
-        console.error('[API_CALL] Error fetching municipality:', error);
-      }
-
-      // Step 2: Call Carto Zone-Urba API to get zones
-      console.log('[API_CALL] Step 2: Fetching zones data');
-      let zones: any[] = [];
-      let isRnu = false;
+      // Step 1: Check for duplicate by coordinates (fast - keeps existing behavior)
       if (lon !== undefined && lat !== undefined) {
-        try {
-          zones = await fetchZoneUrba({ lon, lat });
-          console.log('[API_CALL] Zones fetched successfully, count:', zones.length);
-        } catch (error) {
-          console.error('[API_CALL] Error fetching zones:', error);
-        }
-      }
-
-      // Determine RNU status
-      if (municipality) {
-        isRnu = municipality.properties.is_rnu === true;
-      }
-
-      // Step 3: Enrich database - get or create city, zoning, zone
-      console.log('[DB_ENRICHMENT] Step 3: Enriching database with city, zoning, zone');
-      let cityId: string | null = null;
-      let zoneId: string | null = null;
-      let zoningId: string | null = null;
-
-      if (municipality) {
-        const communeName = municipality.properties.name.toLowerCase();
-        const municipalityInseeCode = municipality.properties.insee || inseeCode || '';
+        console.log('[DUPLICATE_CHECK] Checking for duplicate by coordinates');
         
-        // Get or create city
-        if (municipalityInseeCode) {
-          cityId = await getOrCreateCity(municipalityInseeCode, communeName);
-          console.log('[DB_ENRICHMENT] City ID obtained:', cityId);
-        }
-
-        // Process zones if available
-        if (cityId && zones.length > 0) {
-          const firstZone = zones[0];
-          const zoneCode = firstZone.properties.libelle;
-          const zoneName = firstZone.properties.libelong || firstZone.properties.libelle;
-          const typezone = firstZone.properties.typezone;
-
-          // Get or create zoning
-          zoningId = await getOrCreateZoning(cityId, typezone, isRnu);
-          console.log('[DB_ENRICHMENT] Zoning ID obtained:', zoningId);
-
-          // Get or create zone
-          const zoneGeometry = firstZone.geometry;
-          zoneId = await getOrCreateZone(zoningId, zoneCode, zoneName, zoneGeometry);
-          console.log('[DB_ENRICHMENT] Zone ID obtained:', zoneId);
-        } else if (cityId && isRnu) {
-          // RNU case - create RNU zoning but no specific zone
-          zoningId = await getOrCreateZoning(cityId, undefined, true);
-          console.log('[DB_ENRICHMENT] RNU zoning created, zoning_id:', zoningId);
-        }
-      } else {
-        // Fallback: use address properties to get or create city
-        if (inseeCode) {
-          const communeName = address.properties.city.toLowerCase();
-          cityId = await getOrCreateCity(inseeCode, communeName);
-          console.log('[DB_ENRICHMENT] City ID obtained (fallback):', cityId);
-        }
-      }
-
-      // Step 4: Check for existing research with same user_id, city_id, and zone_id
-      console.log('[DUPLICATE_CHECK] Step 4: Checking for existing research');
-      if (cityId) {
-        const existingConversationId = await checkExistingResearch(userId, cityId, zoneId);
+        const duplicateCheck = await checkDuplicateByCoordinates(lon, lat, userId);
         
-        if (existingConversationId) {
-          console.log('[DUPLICATE_CHECK] Existing conversation found, navigating to:', existingConversationId);
+        if (duplicateCheck.exists && duplicateCheck.conversationId) {
+          console.log('[DUPLICATE_CHECK] Duplicate detected, conversation_id:', duplicateCheck.conversationId);
+          
+          toast({
+            title: 'Analyse existante trouvée',
+            description: 'Vous avez déjà analysé cette adresse. Redirection...',
+            duration: 3000,
+          });
+          
           setSendingMessage(false);
-          router.push(`/chat/${existingConversationId}`);
+          
+          setTimeout(() => {
+            router.push(`/chat/${duplicateCheck.conversationId}`);
+          }, 500);
+          
           return;
         }
+        
+        console.log('[DUPLICATE_CHECK] No duplicate found, creating new conversation');
       }
 
-      console.log('[DUPLICATE_CHECK] No existing research found, creating new records');
+      // Step 2: Create lightweight conversation (instant - no API calls, no DB enrichment)
+      console.log('[LIGHTWEIGHT_CONV] Creating lightweight conversation');
+      const { conversationId } = await createLightweightConversation(
+        userId,
+        addressLabel,
+        { lon: lon!, lat: lat! },
+        inseeCode,
+        address.properties.city
+      );
 
-      // Step 5: Create new research history
-      console.log('[DB_INSERT] Step 5: Creating research history');
-      const { data: research, error: historyError } = await supabase
-        .from('v2_research_history')
-        .insert({
-          user_id: userId,
-          address_input: addressLabel,
-          geo_lon: lon || null,
-          geo_lat: lat || null,
-          city_id: cityId,
-          zone_id: zoneId,
-          geocoded_address: municipality?.properties.name.toLowerCase() || address.properties.city.toLowerCase(),
-          success: true,
-        })
-        .select()
-        .single();
+      console.log('[LIGHTWEIGHT_CONV] Conversation created, id:', conversationId);
 
-      if (historyError || !research) {
-        console.error('[DB_INSERT] Error saving research history:', historyError);
-        setSendingMessage(false);
-        return;
-      }
-
-      console.log('[DB_INSERT] Research history created successfully, research_id:', research.id);
-
-      // Step 6: Create project
-      console.log('[DB_INSERT] Step 6: Creating project');
-      const { data: project, error: projectError } = await supabase
-        .from('v2_projects')
-        .insert({
-          user_id: userId,
-          status: 'draft',
-          main_address: addressLabel,
-          main_city_id: cityId,
-          main_zone_id: zoneId,
-          geo_lon: lon || null,
-          geo_lat: lat || null,
-        })
-        .select()
-        .single();
-
-      if (projectError || !project) {
-        console.error('[DB_INSERT] Error creating project:', projectError);
-        setSendingMessage(false);
-        return;
-      }
-
-      console.log('[DB_INSERT] Project created successfully, project_id:', project.id);
-
-      // Step 7: Create conversation
-      console.log('[DB_INSERT] Step 7: Creating conversation');
-      const defaultTitle = `${address.properties.city}_${address.properties.name}`;
-      const { data: conversation, error: conversationError } = await supabase
-        .from('v2_conversations')
-        .insert({
-          user_id: userId,
-          project_id: project.id,
-          conversation_type: 'address_analysis',
-          title: defaultTitle,
-          context_metadata: {
-            initial_address: addressLabel,
-            geocoded: {
-              lon: lon || null,
-              lat: lat || null,
-            },
-            city: address.properties.city,
-            insee_code: inseeCode,
-          },
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (conversationError || !conversation) {
-        console.error('[DB_INSERT] Error creating conversation:', conversationError);
-        setSendingMessage(false);
-        return;
-      }
-
-      console.log('[DB_INSERT] Conversation created successfully, conversation_id:', conversation.id);
-
-      // Step 8: Update research with conversation and project IDs
-      console.log('[DB_UPDATE] Step 8: Updating research history with conversation and project IDs');
-      const { error: updateError } = await supabase
-        .from('v2_research_history')
-        .update({
-          conversation_id: conversation.id,
-          project_id: project.id,
-        })
-        .eq('id', research.id);
-
-      if (updateError) {
-        console.error('[DB_UPDATE] Failed to link conversation/project to research:', updateError);
-      } else {
-        console.log('[DB_UPDATE] Research history updated successfully');
-      }
-
-      // Step 9: Navigate to new conversation
-      console.log('[NAVIGATION] Navigating to new chat page:', `/chat/${conversation.id}`);
+      // Step 3: Navigate immediately (enrichment happens in background on chat page)
+      console.log('[NAVIGATION] Navigating immediately to chat page:', `/chat/${conversationId}`);
       setSendingMessage(false);
-      router.push(`/chat/${conversation.id}`);
+      router.push(`/chat/${conversationId}`);
     } catch (error) {
       console.error('[ERROR] Error in address submit handler:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de créer la conversation. Veuillez réessayer.',
+        variant: 'destructive',
+      });
       setSendingMessage(false);
     }
   };

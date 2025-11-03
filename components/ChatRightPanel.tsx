@@ -1,10 +1,13 @@
 'use client';
 
-import { X, FileText, Map } from 'lucide-react';
+import { X, FileText, Map, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MapArtifact } from '@/components/MapArtifact';
 import { DocumentViewer } from '@/components/DocumentViewer';
+import { MapSkeleton } from '@/components/skeletons/MapSkeleton';
+import { DocumentSkeleton } from '@/components/skeletons/DocumentSkeleton';
+import { ErrorCard } from '@/components/ui/ErrorCard';
 
 interface ChatRightPanelProps {
   isOpen: boolean;
@@ -15,12 +18,27 @@ interface ChatRightPanelProps {
     zoneGeometry?: any;
     isLoading?: boolean;
   };
-  activeTab: 'document' | 'map';
-  onTabChange: (tab: 'document' | 'map') => void;
+  activeTab: 'map' | 'document';
+  onTabChange: (tab: 'map' | 'document') => void;
   documentHtml?: string | null;
+  mapStatus: 'loading' | 'ready' | 'error';
+  documentStatus: 'loading' | 'ready' | 'error';
+  onRetryMap?: () => void;
+  onRetryDocument?: () => void;
 }
 
-export function ChatRightPanel({ isOpen, onClose, mapProps, activeTab, onTabChange, documentHtml }: ChatRightPanelProps) {
+export function ChatRightPanel({ 
+  isOpen, 
+  onClose, 
+  mapProps, 
+  activeTab, 
+  onTabChange, 
+  documentHtml,
+  mapStatus,
+  documentStatus,
+  onRetryMap,
+  onRetryDocument
+}: ChatRightPanelProps) {
 
   return (
     <>
@@ -43,86 +61,104 @@ export function ChatRightPanel({ isOpen, onClose, mapProps, activeTab, onTabChan
       >
         {isOpen && (
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Header with tab buttons */}
-            <div className="border-b bg-white">
-              <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => onTabChange('document')}
-                    className={cn(
-                      'inline-flex items-center px-3 py-2 text-sm font-medium transition-colors',
-                      'border-b-2 -mb-[1px]',
-                      activeTab === 'document'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    )}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Document
-                  </button>
-                  <button
-                    onClick={() => onTabChange('map')}
-                    className={cn(
-                      'inline-flex items-center px-3 py-2 text-sm font-medium transition-colors',
-                      'border-b-2 -mb-[1px]',
-                      activeTab === 'map'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    )}
-                  >
-                    <Map className="h-4 w-4 mr-2" />
-                    Carte
-                  </button>
-                </div>
-                <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
+            {/* Header */}
+            <div className="flex-none flex items-center justify-between px-4 py-3 border-b bg-white">
+              <h2 className="font-semibold text-lg">Analyse du PLU</h2>
+              <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 md:hidden">
+                <X className="h-5 w-5" />
+              </Button>
             </div>
 
-            {/* Content area - only render active tab */}
-            <div className="flex-1 min-h-0 flex flex-col">
-              {activeTab === 'document' && (
-                <DocumentViewer htmlContent={documentHtml ?? null} />
-              )}
-              
+            {/* Tabs */}
+            <div className="flex-none flex border-b bg-gray-50">
+              <button
+                onClick={() => onTabChange('map')}
+                className={cn(
+                  'flex-1 px-4 py-3 text-sm font-medium transition-all',
+                  'border-b-2 flex items-center justify-center gap-2',
+                  activeTab === 'map'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                )}
+              >
+                <Map className="h-4 w-4" />
+                <span>Carte</span>
+                {mapStatus === 'loading' && (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
+                {mapStatus === 'ready' && (
+                  <CheckCircle className="h-3 w-3 text-green-500" />
+                )}
+              </button>
+
+              <button
+                onClick={() => onTabChange('document')}
+                className={cn(
+                  'flex-1 px-4 py-3 text-sm font-medium transition-all',
+                  'border-b-2 flex items-center justify-center gap-2',
+                  activeTab === 'document'
+                    ? 'border-blue-600 text-blue-600 bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                )}
+              >
+                <FileText className="h-4 w-4" />
+                <span>Document</span>
+                {documentStatus === 'loading' && (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
+                {documentStatus === 'ready' && (
+                  <CheckCircle className="h-3 w-3 text-green-500" />
+                )}
+              </button>
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 overflow-hidden">
               {activeTab === 'map' && (
-                mapProps ? (
-                  <MapArtifact
-                    lat={mapProps.lat}
-                    lon={mapProps.lon}
-                    zoneGeometry={mapProps.zoneGeometry}
-                    isLoading={mapProps.isLoading}
-                  />
-                ) : (
-                  <div className="h-full bg-gray-50 flex items-center justify-center">
-                    <div className="text-center space-y-4 p-8">
-                      <Map className="h-16 w-16 mx-auto text-gray-400" />
-                      <div className="space-y-2">
-                        <h3 className="font-semibold text-gray-900">Carte cadastrale</h3>
-                        <p className="text-sm text-gray-600">
-                          La carte cadastrale sera affichée ici
-                        </p>
-                      </div>
-                      <div className="bg-white rounded-md p-4 border text-left">
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-yellow-200 border border-yellow-400 rounded"></div>
-                            <span className="text-gray-700">Zone Uc</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-green-200 border border-green-400 rounded"></div>
-                            <span className="text-gray-700">Espaces verts</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-blue-200 border border-blue-400 rounded"></div>
-                            <span className="text-gray-700">Équipements publics</span>
-                          </div>
-                        </div>
-                      </div>
+                <div className="h-full">
+                  {mapStatus === 'loading' && (
+                    <div className="h-full flex items-center justify-center p-4">
+                      <MapSkeleton />
                     </div>
-                  </div>
-                )
+                  )}
+                  {mapStatus === 'ready' && mapProps && (
+                    <MapArtifact
+                      lat={mapProps.lat}
+                      lon={mapProps.lon}
+                      zoneGeometry={mapProps.zoneGeometry}
+                      isLoading={false}
+                    />
+                  )}
+                  {mapStatus === 'error' && (
+                    <div className="h-full flex items-center justify-center p-8">
+                      <ErrorCard 
+                        message="Carte indisponible" 
+                        onRetry={onRetryMap}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'document' && (
+                <div className="h-full overflow-y-auto">
+                  {documentStatus === 'loading' && (
+                    <div className="p-6">
+                      <DocumentSkeleton />
+                    </div>
+                  )}
+                  {documentStatus === 'ready' && (
+                    <DocumentViewer htmlContent={documentHtml ?? null} />
+                  )}
+                  {documentStatus === 'error' && (
+                    <div className="h-full flex items-center justify-center p-8">
+                      <ErrorCard 
+                        message="Document indisponible" 
+                        onRetry={onRetryDocument}
+                      />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
