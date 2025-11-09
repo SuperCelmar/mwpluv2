@@ -194,7 +194,7 @@ export function ChatArea() {
         </div>
       </ScrollArea>
 
-      <div className="p-16" style={{ borderTop: '1px solid #E5E5E5', backgroundColor: '#FFFFFF' }}>
+      <div className="p-[1px] sm:p-4 md:p-6" style={{ borderTop: '1px solid #E5E5E5', backgroundColor: '#FFFFFF' }}>
         <div className="max-w-4xl mx-auto">
           <div className="relative">
             <Textarea
@@ -203,7 +203,7 @@ export function ChatArea() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Posez votre question..."
-              className="min-h-[60px] max-h-[200px] pr-48 resize-none rounded-lg transition-all duration-150"
+              className="min-h-[36px] sm:min-h-[52px] md:min-h-[60px] max-h-[200px] pr-10 sm:pr-14 md:pr-16 resize-none rounded-lg transition-all duration-150 text-xs sm:text-base"
               style={{ border: '1px solid #E5E5E5', color: '#000000' }}
               onFocus={(e) => e.currentTarget.style.borderColor = '#000000'}
               onBlur={(e) => e.currentTarget.style.borderColor = '#E5E5E5'}
@@ -213,7 +213,7 @@ export function ChatArea() {
               onClick={handleSendMessage}
               disabled={!input.trim() || isLoading}
               size="icon"
-              className="absolute right-8 bottom-8 rounded-full h-40 w-40 transition-all duration-150 disabled:opacity-50"
+              className="absolute right-1 sm:right-3 md:right-4 bottom-1 sm:bottom-3 md:bottom-4 rounded-full h-7 w-7 sm:h-10 sm:w-10 md:h-11 md:w-11 transition-all duration-150 disabled:opacity-50"
               style={{ backgroundColor: '#000000', color: '#FFFFFF' }}
               onMouseEnter={(e) => {
                 if (!e.currentTarget.disabled) {
@@ -226,11 +226,11 @@ export function ChatArea() {
                 }
               }}
             >
-              <Send className="h-16 w-16" />
+              <Send className="h-3.5 w-3.5 sm:h-[18px] sm:w-[18px] md:h-5 md:w-5" />
             </Button>
           </div>
           {input.length > 0 && (
-            <div className="text-xs mt-8 text-right" style={{ color: '#999999' }}>
+            <div className="text-[10px] sm:text-xs mt-1 sm:mt-3 md:mt-4 text-right" style={{ color: '#999999' }}>
               {input.length} caractères
             </div>
           )}

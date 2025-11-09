@@ -1,5 +1,132 @@
 # Changelog
 
+## 2025-01-27 - Comprehensive Style Guide Documentation
+
+### Added
+- **STYLE_GUIDE.md**: Created comprehensive design system documentation covering:
+  - Overview and design philosophy
+  - Complete color palette (light & dark themes) with hex values and usage guidelines
+  - Typography system (Lato font family, weights, sizes, line heights, responsive adjustments)
+  - Spacing system (rem-based scale with usage patterns)
+  - Component styles (buttons, forms, cards, badges, alerts, breadcrumbs, chat components, project cards)
+  - Shadows & elevation hierarchy
+  - Animations & transitions (durations, common patterns, custom keyframes)
+  - Border radius scale and usage
+  - Opacity & transparency values
+  - Common Tailwind CSS usage patterns and utilities
+  - Example component reference design code (Button, Card, Badge, Chat Input, Project Card)
+  - Responsive design breakpoints and mobile-first approach
+  - Dark mode implementation and color adjustments
+  - Accessibility guidelines (contrast ratios, focus states, touch targets)
+  - Best practices for CSS variables, component styling, theme transitions, and responsive design
+
+## 2025-01-27 - Conversation Card Mobile Optimization
+
+### Changed
+- **ConversationCard Component**: Reduced font sizes and padding for mobile to create a rectangular (row) layout instead of square
+  - Reduced CardTitle from `text-xl` (20px) to `text-sm` (14px) on mobile, `sm:text-base` (16px) on larger screens
+  - Reduced CardDescription from `text-sm` (14px) to `text-xs` (12px) on mobile, `sm:text-sm` (14px) on larger screens
+  - Reduced last message text from `text-sm` (14px) to `text-xs` (12px) on mobile, `sm:text-sm` (14px) on larger screens
+  - Reduced time info from `text-xs` (12px) to `text-[0.6875rem]` (11px) on mobile, `sm:text-xs` (12px) on larger screens
+  - Reduced CardHeader padding from `p-6` (24px) to `p-3` (12px) on mobile, `sm:p-6` (24px) on larger screens
+  - Reduced CardContent padding from `p-6` (24px) to `p-3` (12px) on mobile, `sm:p-6` (24px) on larger screens
+  - Reduced spacing between elements from `space-y-2` to `space-y-1.5` on mobile, `sm:space-y-2` on larger screens
+  - Reduced icon sizes: MapPin from `h-4 w-4` to `h-3 w-3` on mobile, Clock from `h-3 w-3` to `h-2.5 w-2.5` on mobile
+  - Reduced gaps from `gap-2` to `gap-1.5` on mobile for tighter spacing
+
+## 2025-01-27 - Messenger/WhatsApp-Style Chat Interface Styling for Mobile
+
+### Changed
+- **Chat Message Components**: Reduced font sizes and spacing for mobile-first Messenger/WhatsApp-like experience
+  - **ChatMessageBubble**: 
+    - Reduced font size from `text-[15px]` to `text-sm` (14px) on mobile, `sm:text-[15px]` on larger screens
+    - Reduced padding from `px-4 py-4` to `px-3 py-2` on mobile, `sm:px-4 sm:py-2.5` on larger screens
+    - Reduced gap between avatar and message from `gap-3` to `gap-2` on mobile
+    - Changed avatars from `h-9 w-9` to `h-8 w-8` on mobile, `sm:h-9 sm:w-9` on larger screens
+    - Changed avatars from rounded-lg to rounded-full for more modern look
+    - Reduced message bubble padding from `px-5 py-3.5` to `px-3 py-2` on mobile
+    - Removed ring/shadow effects for cleaner look
+  - **ChatMessage**:
+    - Reduced font size to `text-sm` on mobile, `sm:text-base` on larger screens
+    - Reduced padding from `py-5 px-6` to `py-2.5 px-3` on mobile, `sm:py-3 sm:px-4` on larger screens
+    - Reduced gap from `gap-4` to `gap-2` on mobile, `sm:gap-3` on larger screens
+    - Changed avatars to rounded-full and smaller sizes (h-8 w-8 on mobile)
+    - Reduced spacing in markdown elements (lists, headings, blockquotes) for mobile
+  - **PLU ChatMessage**:
+    - Reduced padding from `py-24 px-24` to `py-2 px-3` on mobile, `sm:py-3 sm:px-4` on larger screens
+    - Reduced font size to `text-sm` on mobile, `sm:text-[15px]` on larger screens
+    - Reduced avatar size from `h-32 w-32` to `h-8 w-8` on mobile, `sm:h-9 sm:w-9` on larger screens
+    - Changed avatars to rounded-full
+    - Reduced spacing throughout (gaps, margins, padding) for mobile
+    - Reduced suggested question button sizes for mobile
+  - **Chat Conversation Page**:
+    - Reduced ScrollArea padding from `p-4` to `p-2` on mobile, `sm:p-4` on larger screens
+    - Reduced spacing between messages from `space-y-4` to `space-y-1` on mobile, `sm:space-y-2` on larger screens
+  - **Chat Input Components**:
+    - **ChatInput & ChatInputField**:
+      - Reduced font size from `text-base` to `text-xs` (12px) on mobile, `sm:text-base` on larger screens
+      - Reduced padding from `p-4` to `p-[1px]` (1px) on mobile, `sm:p-4` on larger screens
+      - Reduced input container padding from `p-3` to `p-[1px]` (1px) on mobile
+      - Reduced gap from `gap-2` to `gap-[2px]` (2px) on mobile
+      - Reduced min-height from `min-h-[44px]` to `min-h-[36px]` on mobile
+      - Reduced button size from `h-8 w-8` to `h-7 w-7` (28px) on mobile, `sm:h-9 sm:w-9` on larger screens
+      - Reduced send icon size from `h-4 w-4` to `h-3.5 w-3.5` (14px) on mobile
+      - Reduced right padding from `pr-8` to `pr-7` on mobile
+    - **PLU ChatInput**:
+      - Reduced font size to `text-xs` (12px) on mobile, `sm:text-base` on larger screens
+      - Reduced padding from `p-4` to `p-[1px]` (1px) on mobile
+      - Reduced gap from `gap-3` to `gap-[2px]` (2px) on mobile
+      - Reduced button size from `h-9 w-9` to `h-7 w-7` (28px) on mobile, `sm:h-10 sm:w-10` on larger screens
+      - Reduced send icon size from `h-4 w-4` to `h-3.5 w-3.5` (14px) on mobile
+      - Reduced right padding from `pr-12` to `pr-10` on mobile
+    - **PLU ChatArea**:
+      - Reduced padding from `p-16` to `p-[1px]` (1px) on mobile, `sm:p-4 md:p-6` on larger screens
+      - Reduced font size to `text-xs` (12px) on mobile, `sm:text-base` on larger screens
+      - Reduced min-height from `min-h-[44px]` to `min-h-[36px]` on mobile
+      - Reduced button size from `h-9 w-9` to `h-7 w-7` (28px) on mobile, `sm:h-10 sm:w-10 md:h-11 md:w-11` on larger screens
+      - Reduced send icon size from `h-4 w-4` to `h-3.5 w-3.5` (14px) on mobile
+      - Reduced right padding from `pr-12` to `pr-10` on mobile
+      - Reduced button positioning from `right-2 bottom-2` to `right-1 bottom-1` on mobile
+  - **Style Reference CSS**:
+    - Added explicit font-size to `.chat-content` and `.chat-content p` (14px mobile, 15px desktop)
+    - Updated mobile media query with reduced padding and font sizes
+
+### Files Modified
+- `components/ChatMessageBubble.tsx`: Mobile-first responsive styling
+- `components/ChatMessage.tsx`: Mobile-first responsive styling
+- `components/plu/ChatMessage.tsx`: Mobile-first responsive styling
+- `components/ChatInput.tsx`: Mobile-first responsive font and button sizes
+- `components/ChatInputField.tsx`: Mobile-first responsive font and button sizes
+- `components/plu/ChatInput.tsx`: Mobile-first responsive font and button sizes
+- `components/plu/ChatArea.tsx`: Mobile-first responsive font and button sizes (fixed button size typo)
+- `app/chat/[conversation_id]/page.tsx`: Reduced spacing between messages
+- `style-reference.css`: Added explicit font sizes for chat content
+
+### Result
+- More compact, Messenger/WhatsApp-like chat interface on mobile
+- Smaller, more readable font sizes optimized for mobile screens (14px mobile, 15px desktop)
+- Tighter spacing and padding for better mobile UX
+- Appropriately sized buttons and icons for mobile touch targets
+- Maintains larger, more comfortable sizing on desktop screens
+- Modern rounded-full avatars for cleaner appearance
+- Consistent mobile-first design across all chat components
+
+## 2025-01-27 - Removed Mobile Section Padding
+
+### Changed
+- **Mobile Section Styling**: Removed padding from `.section` elements on mobile devices
+  - Changed mobile media query (`@media (max-width: 767px)`) to set `.section` padding to `0` instead of `var(--spacing-md)`
+  - Sections now display edge-to-edge on mobile while maintaining margins and other styles
+  - Improves mobile layout by maximizing available screen space
+
+### Files Modified
+- `style-reference.css`: Updated mobile media query for `.section` padding
+
+### Result
+- Cleaner mobile layout with sections extending to screen edges
+- Better use of mobile screen real estate
+- Consistent edge-to-edge design on mobile devices
+
 ## 2025-01-XX - Enhanced Breadcrumb Component UI Design with Icon Support
 
 ### Enhanced
@@ -2078,3 +2205,10 @@ Following project guidelines from `project_context.md`:
 - User message background: `bg-gray-50/50` with `border-l-2 border-l-blue-500`
 - Content max-width: `max-w-4xl` for optimal reading experience
 - Markdown support via react-markdown with custom component styling
+
+### Improved
+- **Conversation Card Reference**: Tuned spacing and typography in `style-reference.css`/`style-reference.html` to match Claude-level whitespace
+  - Header padding now asymmetrical for tighter title/description grouping
+  - Title sizing/weight adjusted for better hierarchy against body copy
+  - Message preview and timestamp spacing balanced for cleaner rhythm
+  - Introduced `.conversation-card-meta` flex helper for timestamp row alignment

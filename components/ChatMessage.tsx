@@ -16,7 +16,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        'group flex gap-4 py-5 px-6 transition-colors duration-150',
+        'group flex gap-2 sm:gap-3 py-2.5 px-3 sm:py-3 sm:px-4 transition-colors duration-150',
         isUser 
           ? 'bg-gray-50/50 border-l-2 border-l-blue-500' 
           : 'bg-white border-l-2 border-l-gray-300 hover:bg-gray-50/30'
@@ -27,18 +27,17 @@ export function ChatMessage({ message }: ChatMessageProps) {
       {/* Avatar */}
       <div
         className={cn(
-          'flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-lg transition-all duration-200',
-          'ring-1 ring-inset',
+          'flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-full transition-all duration-200',
           isUser
-            ? 'bg-blue-600 text-white ring-blue-700 shadow-sm'
-            : 'bg-blue-50 text-blue-700 ring-blue-200 shadow-sm group-hover:ring-blue-300'
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'bg-blue-50 text-blue-700 shadow-sm'
         )}
         aria-hidden="true"
       >
         {isUser ? (
-          <User className="h-5 w-5" aria-hidden="true" />
+          <User className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
         ) : (
-          <Bot className="h-5 w-5" aria-hidden="true" />
+          <Bot className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
         )}
       </div>
 
@@ -46,7 +45,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       <div className="flex-1 min-w-0 max-w-4xl">
         {isUser ? (
           <div className="prose prose-sm max-w-none">
-            <p className="text-gray-900 leading-relaxed whitespace-pre-wrap break-words">
+            <p className="text-sm sm:text-base text-gray-900 leading-relaxed whitespace-pre-wrap break-words">
               {content}
             </p>
           </div>
@@ -55,36 +54,36 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <ReactMarkdown
               components={{
                 p: ({ children }) => (
-                  <p className="text-gray-900 leading-relaxed mb-3 last:mb-0">
+                  <p className="text-sm sm:text-base text-gray-900 leading-relaxed mb-2 sm:mb-3 last:mb-0">
                     {children}
                   </p>
                 ),
                 strong: ({ children }) => (
-                  <strong className="font-semibold text-gray-900">{children}</strong>
+                  <strong className="font-semibold text-gray-900 text-sm sm:text-base">{children}</strong>
                 ),
                 em: ({ children }) => (
-                  <em className="italic text-gray-800">{children}</em>
+                  <em className="italic text-gray-800 text-sm sm:text-base">{children}</em>
                 ),
                 ul: ({ children }) => (
-                  <ul className="my-3 ml-6 list-disc space-y-1.5 text-gray-900">
+                  <ul className="my-2 sm:my-3 ml-4 sm:ml-6 list-disc space-y-1 text-sm sm:text-base text-gray-900">
                     {children}
                   </ul>
                 ),
                 ol: ({ children }) => (
-                  <ol className="my-3 ml-6 list-decimal space-y-1.5 text-gray-900">
+                  <ol className="my-2 sm:my-3 ml-4 sm:ml-6 list-decimal space-y-1 text-sm sm:text-base text-gray-900">
                     {children}
                   </ol>
                 ),
                 li: ({ children }) => (
-                  <li className="leading-relaxed">{children}</li>
+                  <li className="leading-relaxed text-sm sm:text-base">{children}</li>
                 ),
                 code: ({ children }) => (
-                  <code className="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-sm font-mono border border-gray-200">
+                  <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-xs sm:text-sm font-mono border border-gray-200">
                     {children}
                   </code>
                 ),
                 pre: ({ children }) => (
-                  <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 my-3 overflow-x-auto">
+                  <pre className="bg-gray-50 border border-gray-200 rounded-lg p-2 sm:p-3 my-2 sm:my-3 overflow-x-auto text-xs sm:text-sm">
                     {children}
                   </pre>
                 ),
@@ -99,22 +98,22 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   </a>
                 ),
                 h1: ({ children }) => (
-                  <h1 className="text-xl font-bold text-gray-900 mt-4 mb-2 first:mt-0">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 mt-3 sm:mt-4 mb-1.5 sm:mb-2 first:mt-0">
                     {children}
                   </h1>
                 ),
                 h2: ({ children }) => (
-                  <h2 className="text-lg font-semibold text-gray-900 mt-3 mb-2 first:mt-0">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 mt-2 sm:mt-3 mb-1.5 sm:mb-2 first:mt-0">
                     {children}
                   </h2>
                 ),
                 h3: ({ children }) => (
-                  <h3 className="text-base font-semibold text-gray-900 mt-3 mb-1.5 first:mt-0">
+                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mt-2 sm:mt-3 mb-1 sm:mb-1.5 first:mt-0">
                     {children}
                   </h3>
                 ),
                 blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-blue-400 pl-4 italic text-gray-700 my-3 bg-blue-50/50 py-2 rounded-r">
+                  <blockquote className="border-l-4 border-blue-400 pl-3 sm:pl-4 italic text-gray-700 my-2 sm:my-3 bg-blue-50/50 py-1.5 sm:py-2 rounded-r text-sm sm:text-base">
                     {children}
                   </blockquote>
                 ),

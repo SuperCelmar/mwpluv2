@@ -12,7 +12,7 @@
 <body>
   <!-- Header Bar -->
   <header class="header-bar">
-    <nav class="breadcrumb-nav">
+    <nav class="breadcrumb-nav breadcrumb-nav-mobile">
       <a href="#">MWPLU</a>
       <span class="breadcrumb-separator">/</span>
       <span>UI Style Reference</span>
@@ -21,9 +21,36 @@
       <button class="btn-icon" id="theme-toggle" aria-label="Toggle theme">
         <span id="theme-icon">🌙</span>
       </button>
-      <button class="btn-icon">Copy</button>
-      <button class="btn-publish">Publish</button>
-      <button class="btn-icon">✕</button>
+      <button class="btn-icon" id="copy-action">Copy</button>
+      <button class="btn-publish" id="publish-action">Publish</button>
+      <button class="btn-icon" id="close-action">✕</button>
+    </div>
+    <!-- Mobile Hamburger Menu -->
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu" aria-expanded="false">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+    <!-- Mobile Dropdown Menu -->
+    <div class="mobile-menu-dropdown" id="mobile-menu-dropdown">
+      <button class="mobile-menu-item" id="mobile-theme-toggle" aria-label="Toggle theme">
+        <span id="mobile-theme-icon">🌙</span>
+        <span>Toggle Theme</span>
+      </button>
+      <button class="mobile-menu-item" id="mobile-copy-action">
+        <span>📋</span>
+        <span>Copy</span>
+      </button>
+      <button class="mobile-menu-item" id="mobile-publish-action">
+        <span>📤</span>
+        <span>Publish</span>
+      </button>
+      <button class="mobile-menu-item" id="mobile-close-action">
+        <span>✕</span>
+        <span>Close</span>
+      </button>
     </div>
   </header>
 
@@ -441,16 +468,28 @@
       </div>
 
       <div class="component-example">
-        <div style="border-top: 1px solid var(--border-light); padding-top: 1rem;">
+        <div style="border-top: 2px; padding: 1px;">
+          <div style="display: flex; align-items: center; gap: 2px; border: 1px solid var(--border-medium); border-radius: 0.5rem; background: rgba(249, 250, 251, 0.5); padding: 2.5px; max-width: 56rem; margin: 0 auto; transition: border-color 0.2s;">
+            <div style="position: relative; flex: 1; min-width: 0;">
+              <textarea class="textarea" placeholder="Quelle est la hauteur maximale autorisée ? Puis-je construire un garage ?" style="min-height: 18px; max-height: 200px; border: 0; background: transparent; padding: 0.25rem 0.375rem 0.25rem 0.25rem; resize: none; overflow: hidden; box-shadow: none; font-size: 0.75rem; line-height:1.2;"></textarea>
+            </div>
+            <button class="btn btn-default" style="height: 28px; width: 28px; padding: 0; border-radius: 0.4rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; background: #000; color: #fff; border: none; margin-bottom: 0;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Mobile view: Minimal padding (1px), smaller text (0.75rem), compact button (28px).</p>
+        <div style="border-top: 2px solid var(--border-light); padding-top: 1rem; margin-top: 1rem;">
           <div style="display: flex; align-items: flex-end; gap: 0.5rem; border: 1px solid var(--border-medium); border-radius: 0.75rem; background: rgba(249, 250, 251, 0.5); padding: 0.75rem; max-width: 56rem; margin: 0 auto; transition: border-color 0.2s;">
             <div style="position: relative; flex: 1; min-width: 0;">
               <textarea class="textarea" placeholder="Quelle est la hauteur maximale autorisée ? Puis-je construire un garage ?" style="min-height: 44px; max-height: 200px; border: 0; background: transparent; padding: 0.5rem 2.5rem 0.5rem 0.5rem; resize: none; overflow: hidden; box-shadow: none; font-size: 0.9375rem; line-height: 1.5;"></textarea>
             </div>
-            <button class="btn btn-default" style="height: 32px; width: 32px; padding: 0; border-radius: 0.5rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; background: #000; color: #fff; border: none; margin-bottom: 0;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <button class="btn btn-default" style="height: 36px; width: 36px; padding: 0; border-radius: 0.5rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; background: #000; color: #fff; border: none; margin-bottom: 0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </button>
           </div>
         </div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Desktop view: Standard padding (0.75rem), larger text (0.9375rem), larger button (36px).</p>
       </div>
     </section>
 
@@ -497,7 +536,7 @@
 
       <div class="component-example">
         <div class="component-example-label">Conversation Card Example</div>
-        <div class="card">
+        <div class="card conversation-card">
           <div class="card-header">
             <div class="card-title">Conversation</div>
             <div class="card-description">
@@ -506,10 +545,10 @@
             </div>
           </div>
           <div class="card-content">
-            <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+            <p>
               Dernier message de la conversation...
             </p>
-            <div style="font-size: 0.8125rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+            <div class="conversation-card-meta">
               <span style="font-size: 0.875rem;">🕐</span>
               <span>Mis à jour il y a 1 heure</span>
             </div>
@@ -782,6 +821,8 @@
     (function() {
       const themeToggle = document.getElementById('theme-toggle');
       const themeIcon = document.getElementById('theme-icon');
+      const mobileThemeToggle = document.getElementById('mobile-theme-toggle');
+      const mobileThemeIcon = document.getElementById('mobile-theme-icon');
       const html = document.documentElement;
       
       // Get saved theme or detect system preference
@@ -801,11 +842,13 @@
       function applyTheme(theme) {
         if (theme === 'dark') {
           html.classList.add('dark');
-          themeIcon.textContent = '☀️';
+          if (themeIcon) themeIcon.textContent = '☀️';
+          if (mobileThemeIcon) mobileThemeIcon.textContent = '☀️';
           localStorage.setItem('theme', 'dark');
         } else {
           html.classList.remove('dark');
-          themeIcon.textContent = '🌙';
+          if (themeIcon) themeIcon.textContent = '🌙';
+          if (mobileThemeIcon) mobileThemeIcon.textContent = '🌙';
           localStorage.setItem('theme', 'light');
         }
       }
@@ -814,12 +857,27 @@
       const initialTheme = getInitialTheme();
       applyTheme(initialTheme);
       
-      // Toggle theme on button click
-      themeToggle.addEventListener('click', () => {
-        const currentTheme = html.classList.contains('dark') ? 'dark' : 'light';
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        applyTheme(newTheme);
-      });
+      // Toggle theme on button click (desktop)
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          const currentTheme = html.classList.contains('dark') ? 'dark' : 'light';
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          applyTheme(newTheme);
+        });
+      }
+      
+      // Toggle theme on button click (mobile)
+      if (mobileThemeToggle) {
+        mobileThemeToggle.addEventListener('click', () => {
+          const currentTheme = html.classList.contains('dark') ? 'dark' : 'light';
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          applyTheme(newTheme);
+          // Close menu after action
+          if (window.closeMobileMenu) {
+            window.closeMobileMenu();
+          }
+        });
+      }
       
       // Listen for system theme changes
       if (window.matchMedia) {
@@ -831,6 +889,82 @@
           }
         });
       }
+    })();
+
+    // Mobile Menu Toggle Functionality
+    (function() {
+      const menuToggle = document.getElementById('mobile-menu-toggle');
+      const menuDropdown = document.getElementById('mobile-menu-dropdown');
+      const mobileCopyAction = document.getElementById('mobile-copy-action');
+      const mobilePublishAction = document.getElementById('mobile-publish-action');
+      const mobileCloseAction = document.getElementById('mobile-close-action');
+      const copyAction = document.getElementById('copy-action');
+      const publishAction = document.getElementById('publish-action');
+      const closeAction = document.getElementById('close-action');
+
+      function openMobileMenu() {
+        if (menuDropdown && menuToggle) {
+          menuDropdown.classList.add('mobile-menu-open');
+          menuToggle.setAttribute('aria-expanded', 'true');
+        }
+      }
+
+      window.closeMobileMenu = function() {
+        if (menuDropdown && menuToggle) {
+          menuDropdown.classList.remove('mobile-menu-open');
+          menuToggle.setAttribute('aria-expanded', 'false');
+        }
+      };
+
+      // Toggle menu on hamburger click
+      if (menuToggle) {
+        menuToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (menuDropdown && menuDropdown.classList.contains('mobile-menu-open')) {
+            window.closeMobileMenu();
+          } else {
+            openMobileMenu();
+          }
+        });
+      }
+
+      // Close menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (menuDropdown && menuToggle && 
+            !menuDropdown.contains(e.target) && 
+            !menuToggle.contains(e.target)) {
+          window.closeMobileMenu();
+        }
+      });
+
+      // Handle menu item clicks
+      if (mobileCopyAction && copyAction) {
+        mobileCopyAction.addEventListener('click', () => {
+          copyAction.click();
+          window.closeMobileMenu();
+        });
+      }
+
+      if (mobilePublishAction && publishAction) {
+        mobilePublishAction.addEventListener('click', () => {
+          publishAction.click();
+          window.closeMobileMenu();
+        });
+      }
+
+      if (mobileCloseAction && closeAction) {
+        mobileCloseAction.addEventListener('click', () => {
+          closeAction.click();
+          window.closeMobileMenu();
+        });
+      }
+
+      // Close menu on escape key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && menuDropdown && menuDropdown.classList.contains('mobile-menu-open')) {
+          window.closeMobileMenu();
+        }
+      });
     })();
   </script>
 </body>

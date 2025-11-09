@@ -14,7 +14,7 @@ export function ChatMessageBubble({ role, content }: ChatMessageBubbleProps) {
   return (
     <div
       className={cn(
-        'flex gap-3 px-4 py-4',
+        'flex gap-2 px-3 py-2 sm:px-4 sm:py-2.5',
         isUser ? 'justify-end' : 'justify-start'
       )}
       role="article"
@@ -23,24 +23,23 @@ export function ChatMessageBubble({ role, content }: ChatMessageBubbleProps) {
       {/* Bot Avatar - Left side */}
       {!isUser && (
         <div
-          className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-200 shadow-sm transition-all duration-200 hover:ring-blue-300"
+          className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-full bg-blue-50 text-blue-700 transition-all duration-200"
           aria-hidden="true"
         >
-          <Bot className="h-5 w-5" aria-hidden="true" />
+          <Bot className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
         </div>
       )}
 
       {/* Message Bubble */}
       <div
         className={cn(
-          'max-w-[85%] rounded-2xl px-5 py-3.5 shadow-sm transition-all duration-200',
-          'ring-1 ring-inset',
+          'max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 transition-all duration-200',
           isUser
-            ? 'bg-blue-600 text-white ring-blue-700 hover:bg-blue-700 hover:shadow-md'
-            : 'bg-white text-gray-900 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
+            ? 'bg-blue-600 text-white hover:bg-blue-700'
+            : 'bg-white text-gray-900 shadow-sm border border-gray-200 hover:border-gray-300'
         )}
       >
-        <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+        <p className="text-sm sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">
           {content}
         </p>
       </div>
@@ -48,10 +47,10 @@ export function ChatMessageBubble({ role, content }: ChatMessageBubbleProps) {
       {/* User Avatar - Right side */}
       {isUser && (
         <div
-          className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-lg bg-blue-600 text-white ring-1 ring-blue-700 shadow-sm transition-all duration-200 hover:ring-blue-800"
+          className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-full bg-blue-600 text-white transition-all duration-200"
           aria-hidden="true"
         >
-          <User className="h-5 w-5" aria-hidden="true" />
+          <User className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
         </div>
       )}
     </div>

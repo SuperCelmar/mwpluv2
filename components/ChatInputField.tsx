@@ -42,9 +42,9 @@ export function ChatInputField({
   };
 
   return (
-    <div className="border-t bg-white p-4 md:p-6">
+    <div className="border-t bg-white p-[1px] sm:p-4 md:p-6">
       <div className={cn(
-        "relative flex items-end gap-2 rounded-lg border border-border bg-secondary/30 p-3 transition-all max-w-4xl mx-auto",
+        "relative flex items-end gap-[2px] sm:gap-2 rounded-lg border border-border bg-secondary/30 p-[1px] sm:p-3 transition-all max-w-4xl mx-auto",
         disabled && "opacity-60"
       )}>
         <div className="relative flex-1 min-w-0">
@@ -56,8 +56,8 @@ export function ChatInputField({
             placeholder={placeholder}
             disabled={disabled}
             className={cn(
-              "min-h-[44px] max-h-[200px] resize-none border-0 bg-transparent pr-10 shadow-none focus-visible:ring-0 text-base overflow-hidden",
-              "placeholder:text-muted-foreground",
+              "min-h-[36px] sm:min-h-[44px] max-h-[200px] resize-none border-0 bg-transparent pr-7 sm:pr-10 shadow-none focus-visible:ring-0 overflow-hidden",
+              "text-xs sm:text-base placeholder:text-muted-foreground",
               "[&::-webkit-resizer]:hidden [resize:none]"
             )}
             rows={1}
@@ -75,12 +75,12 @@ export function ChatInputField({
           disabled={disabled || !input.trim()}
           size="icon"
           className={cn(
-            "h-7 w-7 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90",
+            "h-7 w-7 sm:h-9 sm:w-9 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90",
             "disabled:opacity-40 disabled:cursor-not-allowed",
-            "transition-opacity mb-0.5"
+            "transition-opacity mb-0"
           )}
         >
-          <Send className="h-3.5 w-3.5" />
+          <Send className="h-[5px] w-[5px] sm:h-[18px] sm:w-[18px]" />
         </Button>
       </div>
     </div>

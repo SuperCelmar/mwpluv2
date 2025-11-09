@@ -24,7 +24,7 @@ export function ChatMessage({
 
   const renderContent = () => {
     if (isUser) {
-      return <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#000000' }}>{message.content}</p>;
+      return <p className="text-sm sm:text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: '#000000' }}>{message.content}</p>;
     }
 
     const parts = message.content.split(/(\[→ [^\]]+\])/g);
@@ -60,10 +60,10 @@ export function ChatMessage({
               key={index}
               className="inline"
               components={{
-                p: ({ children }) => <span style={{ color: '#000000' }}>{children}</span>,
-                strong: ({ children }) => <strong className="font-bold" style={{ color: '#000000' }}>{children}</strong>,
-                ul: ({ children }) => <ul className="my-8 ml-16 list-disc space-y-4">{children}</ul>,
-                li: ({ children }) => <li className="text-sm" style={{ color: '#000000' }}>{children}</li>,
+                p: ({ children }) => <span className="text-sm sm:text-[15px]" style={{ color: '#000000' }}>{children}</span>,
+                strong: ({ children }) => <strong className="font-bold text-sm sm:text-[15px]" style={{ color: '#000000' }}>{children}</strong>,
+                ul: ({ children }) => <ul className="my-2 sm:my-3 ml-4 sm:ml-6 list-disc space-y-1 sm:space-y-2">{children}</ul>,
+                li: ({ children }) => <li className="text-sm sm:text-[15px]" style={{ color: '#000000' }}>{children}</li>,
               }}
             >
               {part}
@@ -77,7 +77,7 @@ export function ChatMessage({
   return (
     <div
       className={cn(
-        'py-24 px-24 animate-in fade-in-0 slide-in-from-bottom-2 duration-300'
+        'py-2 px-3 sm:py-3 sm:px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-300'
       )}
       style={{
         backgroundColor: isUser ? '#FFFFFF' : '#F5F5F5'
@@ -86,13 +86,13 @@ export function ChatMessage({
       <div className="max-w-4xl mx-auto">
         <div
           className={cn(
-            'flex gap-16',
+            'flex gap-2 sm:gap-3',
             isUser ? 'flex-row-reverse' : 'flex-row'
           )}
         >
           <div
             className={cn(
-              'flex-shrink-0 h-32 w-32 rounded-lg flex items-center justify-center text-sm font-medium'
+              'flex-shrink-0 h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium'
             )}
             style={{
               backgroundColor: isUser ? '#000000' : '#FFFFFF',
@@ -103,11 +103,11 @@ export function ChatMessage({
             {isUser ? 'U' : 'M'}
           </div>
 
-          <div className={cn('flex-1 space-y-12', isUser ? 'max-w-[80%]' : '')}>
-            <div className="space-y-8">{renderContent()}</div>
+          <div className={cn('flex-1 space-y-2 sm:space-y-3', isUser ? 'max-w-[85%] sm:max-w-[80%]' : 'max-w-[85%] sm:max-w-[80%]')}>
+            <div className="space-y-1 sm:space-y-2">{renderContent()}</div>
 
             {message.images && message.images.length > 0 && (
-              <div className="space-y-8">
+              <div className="space-y-2 sm:space-y-3">
                 {message.images.map((image, index) => (
                   <div
                     key={index}
@@ -125,14 +125,14 @@ export function ChatMessage({
             )}
 
             {!isUser && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
-              <div className="flex flex-wrap gap-8 pt-8">
+              <div className="flex flex-wrap gap-2 sm:gap-3 pt-2 sm:pt-3">
                 {message.suggestedQuestions.map((question, index) => (
                   <Button
                     key={index}
                     variant="outline"
                     size="sm"
                     onClick={() => onSuggestedQuestionClick?.(question)}
-                    className="text-xs rounded-full transition-all duration-150 h-32 px-16"
+                    className="text-xs sm:text-sm rounded-full transition-all duration-150 h-7 sm:h-8 px-3 sm:px-4"
                     style={{
                       border: '1px solid #E5E5E5',
                       color: '#000000',
@@ -153,7 +153,7 @@ export function ChatMessage({
               </div>
             )}
 
-            <div className="flex items-center gap-8 text-xs pt-4" style={{ color: '#999999' }}>
+            <div className="flex items-center gap-2 sm:gap-3 text-xs pt-1 sm:pt-2" style={{ color: '#999999' }}>
               <span>
                 {format(new Date(message.timestamp), 'HH:mm', { locale: fr })}
               </span>

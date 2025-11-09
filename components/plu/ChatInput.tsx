@@ -38,9 +38,9 @@ export function ChatInput({ onSend, disabled, placeholder = 'Entrez votre adress
   };
 
   return (
-    <div className="border-t bg-white p-4">
+    <div className="border-t bg-white p-[1px] sm:p-4">
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-        <div className="flex gap-3 items-end">
+        <div className="flex gap-[2px] sm:gap-3 items-end">
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}
@@ -50,18 +50,18 @@ export function ChatInput({ onSend, disabled, placeholder = 'Entrez votre adress
               placeholder={placeholder}
               disabled={disabled}
               rows={1}
-              className="resize-none min-h-[44px] max-h-[200px] text-base pr-16"
+              className="resize-none min-h-[36px] sm:min-h-[44px] max-h-[200px] text-xs sm:text-base pr-10 sm:pr-16"
             />
-            <div className="absolute bottom-3 right-3 text-xs text-gray-400">
+            <div className="absolute bottom-1 sm:bottom-3 right-1 sm:right-3 text-[10px] sm:text-xs text-gray-400">
               {message.length > 0 && `${message.length}`}
             </div>
           </div>
           <Button
             type="submit"
             disabled={!message.trim() || disabled}
-            className="h-11 w-11 rounded-full bg-black hover:bg-gray-800 p-0 flex-shrink-0"
+            className="h-7 w-7 sm:h-10 sm:w-10 rounded-full bg-black hover:bg-gray-800 p-0 flex-shrink-0"
           >
-            <Send className="h-5 w-5" />
+            <Send className="h-[5px] w-[5px] sm:h-5 sm:w-5" />
           </Button>
         </div>
       </form>

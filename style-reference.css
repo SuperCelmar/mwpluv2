@@ -312,6 +312,114 @@ p {
 }
 
 /* ============================================
+   Mobile Menu
+   ============================================ */
+
+.mobile-menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  padding: var(--spacing-xs);
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: var(--transition-theme), background-color 0.2s ease, transform 0.15s ease, color 0.2s ease;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  flex-direction: row;
+}
+
+.mobile-menu-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.mobile-menu-toggle:focus {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.mobile-menu-toggle svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+}
+
+.mobile-menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: var(--spacing-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  min-width: 200px;
+  padding: 0.25rem;
+  z-index: 1000;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.mobile-menu-dropdown.mobile-menu-open {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: 0.75rem var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-family);
+  transition: var(--transition-theme), background-color 0.2s ease;
+  min-height: 44px;
+}
+
+.mobile-menu-item:hover {
+  background: var(--bg-secondary);
+}
+
+.mobile-menu-item:focus {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+.mobile-menu-item span:first-child {
+  font-size: 1rem;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.breadcrumb-nav-mobile {
+  flex: 1;
+  min-width: 0;
+}
+
+.breadcrumb-nav-mobile span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
    Buttons
    ============================================ */
 
@@ -448,14 +556,14 @@ p {
 .textarea {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-family);
   resize: vertical;
-  min-height: 80px;
+  min-height: 52px;
   transition: var(--transition-theme), border-color 0.2s;
 }
 
@@ -679,6 +787,48 @@ input[type="checkbox"].switch:checked::after {
 
 .card-content {
   padding: var(--spacing-md);
+}
+
+/* Conversation card spacing refinements */
+.conversation-card .card-header {
+  padding: 1rem 1.5rem 0.875rem 1.5rem;
+}
+
+.conversation-card .card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 0.375rem;
+}
+
+.conversation-card .card-description {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.conversation-card .card-content {
+  padding: 1rem 1.5rem;
+}
+
+.conversation-card .card-content > p:first-child {
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
+
+.conversation-card .card-content > div:last-child {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.conversation-card .conversation-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .card-footer {
@@ -947,6 +1097,24 @@ input[type="checkbox"].switch:checked::after {
 .chat-content {
   flex: 1;
   color: var(--text-primary);
+  font-size: 0.875rem; /* 14px - Messenger/WhatsApp-like mobile size */
+}
+
+.chat-content p {
+  font-size: 0.875rem; /* 14px - Ensure paragraph inherits correct size */
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Desktop: Slightly larger font for better readability */
+@media (min-width: 640px) {
+  .chat-content {
+    font-size: 0.9375rem; /* 15px - Slightly larger on desktop */
+  }
+  
+  .chat-content p {
+    font-size: 0.9375rem; /* 15px - Slightly larger on desktop */
+  }
 }
 
 .project-card {
@@ -1129,7 +1297,7 @@ input[type="checkbox"].switch:checked::after {
   }
   
   .section {
-    padding: var(--spacing-md);
+    padding: 0;
     margin-bottom: var(--spacing-xl);
   }
   
@@ -1152,18 +1320,36 @@ input[type="checkbox"].switch:checked::after {
   
   .header-bar {
     padding: var(--spacing-xs) var(--spacing-sm);
-    flex-wrap: wrap;
+    position: relative;
+    flex-wrap: nowrap;
   }
   
   .breadcrumb-nav {
     font-size: 0.75rem;
-    width: 100%;
-    margin-bottom: var(--spacing-xs);
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+  }
+  
+  .breadcrumb-nav-mobile span:last-child {
+    max-width: calc(100vw - 120px);
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   .header-actions {
-    width: 100%;
-    justify-content: flex-end;
+    display: none;
+  }
+  
+  .mobile-menu-toggle {
+    display: flex;
+  }
+  
+  .mobile-menu-dropdown {
+    display: block;
   }
   
   .component-example {
@@ -1176,14 +1362,15 @@ input[type="checkbox"].switch:checked::after {
   }
   
   .btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 0.75rem 1rem;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0.5rem 0.75rem;
   }
   
   .btn-sm {
-    min-height: 44px;
-    padding: 0.625rem 0.875rem;
+    min-height: 28px;
+    min-width: 28px;
+    padding: 0.5rem 0.75rem;
   }
   
   .code-block {
@@ -1212,8 +1399,22 @@ input[type="checkbox"].switch:checked::after {
   }
   
   .chat-message {
-    padding: var(--spacing-sm);
-    gap: var(--spacing-sm);
+    padding: 0.5rem 0.75rem; /* Reduced padding for mobile */
+    gap: 0.5rem; /* Reduced gap for mobile */
+  }
+  
+  .chat-content {
+    font-size: 0.875rem; /* 14px - Mobile size */
+  }
+  
+  .chat-content p {
+    font-size: 0.875rem; /* 14px - Mobile size */
+  }
+  
+  .chat-avatar {
+    width: 2rem; /* 32px - Smaller avatar for mobile */
+    height: 2rem;
+    font-size: 0.75rem; /* Smaller avatar text */
   }
   
   .project-card {
