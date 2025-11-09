@@ -1,5 +1,42 @@
 # Changelog
 
+## 2025-01-XX - Enhanced Breadcrumb Component UI Design with Icon Support
+
+### Enhanced
+- **Breadcrumb Component**: Improved visual design and user experience
+  - Increased spacing between items (gap-2 to gap-3 on larger screens)
+  - Enhanced link hover states with smooth underline animation and color transitions
+  - Added focus-visible states for better keyboard accessibility
+  - Improved separator styling with muted colors for better visual hierarchy
+  - Enhanced current page styling with medium font weight and text truncation
+  - Added optional `variant` prop with 'subtle' option for background styling
+  - Better visual separation with improved separator opacity and sizing
+  - **Built-in icon support**: Added `icon` prop to `BreadcrumbLink` and `BreadcrumbPage` components
+    - Accepts any Lucide icon component
+    - Icons automatically sized (h-4 w-4) and properly spaced
+    - Icons use `shrink-0` to prevent compression
+    - Works seamlessly with existing hover and focus states
+  - **Style Reference Updated**: Updated `style-reference.html` and `style-reference.css` to showcase breadcrumb examples with icons
+    - Added three breadcrumb examples: default, with icons, and subtle variant
+    - Icons displayed using inline SVG matching Lucide icons
+    - Improved CSS styling matching React component improvements
+    - Added dark mode support for subtle variant
+  - Publish header button now explicitly keeps dark text in light mode (and white in dark mode)
+
+### Files Modified
+- `components/ui/breadcrumb.tsx`: Enhanced all breadcrumb sub-components with improved styling and icon support
+- `app/test-breadcrumb/page.tsx`: Updated examples to showcase icon usage
+- `style-reference.html`: Added breadcrumb examples with icons
+- `style-reference.css`: Enhanced breadcrumb styling with icon support and improved hover states
+
+### Result
+- More polished and modern breadcrumb navigation
+- Better accessibility with focus states
+- Improved visual hierarchy and readability
+- Smooth hover and transition effects
+- Easy icon integration with simple `icon` prop
+- Style reference page now accurately reflects component improvements with visual examples
+
 ## 2025-01-XX - Improved UI Style Reference: Contrast, Hierarchy, and Personality
 
 ### Fixed
@@ -950,7 +987,7 @@ This enables verification that the API responses contain the correct zone and zo
   
 - `components/DocumentViewer.tsx`:
   - Lines 25-48: Improved search useEffect with regex escaping and error handling
-  - Lines 50-109: Rewrote `highlightMatches` function with better DOM traversal
+  - Lines 50-109: Rewritten `highlightMatches` function with better DOM traversal
   - Lines 128-150: Enhanced `clearHighlights` with normalization and error handling
 
 ### Technical Details
@@ -1996,3 +2033,48 @@ Following project guidelines from `project_context.md`:
   - Workaround: Tests verify integration flow up to Supabase call
   - See `__tests__/MSW_INTEGRATION_ISSUE.md` for details
 
+
+## 2025-11-09
+
+### Redesigned
+- **ChatMessage Components**: Complete UI/UX overhaul of bot message components
+  - **ChatMessage.tsx**: Enhanced full-width message layout
+    - Improved contrast: Bot messages now use white background with subtle gray border-left accent
+    - Better visual hierarchy: Added colored left border (blue for user, gray for bot)
+    - Enhanced avatar design: Bot avatar uses blue-50 background with blue-700 text (WCAG AA compliant)
+    - Added hover states: Subtle background color transitions on bot messages
+    - Improved spacing: Increased padding (py-5) and gap (gap-4) for better readability
+    - Max-width constraint: Content limited to max-w-4xl for optimal reading width
+    - Markdown support: Bot messages now render markdown with proper typography hierarchy
+    - Accessibility: Added ARIA labels, semantic HTML (role="article"), proper contrast ratios
+  
+  - **ChatMessageBubble.tsx**: Enhanced bubble-style message layout
+    - Improved contrast: Bot bubbles use white background with gray ring border (was gray-100)
+    - Better avatar visibility: Bot avatar uses blue-50/blue-700 (was gray-200/gray-700)
+    - Enhanced shadows: Added subtle shadow-sm with hover elevation
+    - Consistent spacing: Standardized padding (px-5 py-3.5) and gap (gap-3)
+    - Better typography: Increased font size to 15px (was text-sm) for improved readability
+    - Ring borders: Added ring-1 borders for better definition
+    - Accessibility: Added ARIA labels and semantic HTML
+  
+  - **Typography Improvements**:
+    - Markdown rendering for bot messages with styled components
+    - Proper heading hierarchy (h1, h2, h3) with appropriate sizing
+    - Styled lists (ul, ol) with proper spacing
+    - Code blocks with gray background and border
+    - Link styling with blue-600 color and hover states
+    - Blockquote styling with left border accent
+    - All text meets WCAG AA contrast requirements (4.5:1 minimum)
+
+### Fixed
+- **Visual Hierarchy**: Resolved white-on-white contrast issues
+- **Accessibility**: Added proper ARIA labels and semantic HTML structure
+- **Color Contrast**: All text now meets WCAG AA standards
+- **Component Consistency**: Standardized spacing and styling patterns
+
+### Technical Details
+- Bot avatar: `bg-blue-50 text-blue-700 ring-blue-200` (4.7:1 contrast ratio)
+- Bot message background: `bg-white` with `border-l-2 border-l-gray-300`
+- User message background: `bg-gray-50/50` with `border-l-2 border-l-blue-500`
+- Content max-width: `max-w-4xl` for optimal reading experience
+- Markdown support via react-markdown with custom component styling
