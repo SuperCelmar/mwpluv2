@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MWPLU - UI Style Reference</title>
+  <link rel="stylesheet" href="style-reference.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="header-bar">
+    <nav class="breadcrumb-nav">
+      <a href="#">MWPLU</a>
+      <span class="breadcrumb-separator">/</span>
+      <span>UI Style Reference</span>
+    </nav>
+    <div class="header-actions">
+      <button class="btn-icon" id="theme-toggle" aria-label="Toggle theme">
+        <span id="theme-icon">🌙</span>
+      </button>
+      <button class="btn-icon">Copy</button>
+      <button class="btn-publish">Publish</button>
+      <button class="btn-icon">✕</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Introduction -->
+    <section class="section">
+      <div class="section-header">
+        <h1>UI Style Reference</h1>
+        <p class="section-description">
+          A comprehensive reference guide for all UI components in the MWPLU design system. 
+          This page showcases components styled in a clean, minimalist Cloud UI aesthetic.
+        </p>
+      </div>
+    </section>
+
+    <!-- Typography -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Typography</h2>
+        <p class="section-description">Text styles and hierarchy using Lato font family.</p>
+      </div>
+      
+      <div class="component-example">
+        <div class="component-example-label">Headings</div>
+        <h1>Heading 1 - Main Title</h1>
+        <h2>Heading 2 - Section Title</h2>
+        <h3>Heading 3 - Subsection Title</h3>
+        <h4>Heading 4 - Component Title</h4>
+        <h5>Heading 5 - Small Title</h5>
+        <h6>Heading 6 - Smallest Title</h6>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Body Text</div>
+        <p>This is regular body text. It provides comfortable reading with appropriate line height and spacing.</p>
+        <p><strong>This is bold text</strong> used for emphasis.</p>
+        <p><em>This is italic text</em> used for subtle emphasis.</p>
+        <p class="text-muted">This is muted text for secondary information.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Code Blocks</div>
+        <div class="code-block">
+          <code>
+            <span class="code-keyword">export function</span> <span class="code-function">createProject</span>(<span class="code-variable">name</span>: <span class="code-type">string</span>) {<br>
+            &nbsp;&nbsp;<span class="code-comment">// Create a new project</span><br>
+            &nbsp;&nbsp;<span class="code-keyword">return</span> {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="code-variable">id</span>: <span class="code-string">'project-123'</span>,<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="code-variable">name</span>: <span class="code-variable">name</span><br>
+            &nbsp;&nbsp;};<br>
+            }
+          </code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Buttons -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Buttons</h2>
+        <p class="section-description">Interactive button components in various styles and sizes.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Button Variants</div>
+        <div class="flex gap-sm" style="flex-wrap: wrap;">
+          <button class="btn btn-default">Default</button>
+          <button class="btn btn-destructive">Destructive</button>
+          <button class="btn btn-outline">Outline</button>
+          <button class="btn btn-secondary">Secondary</button>
+          <button class="btn btn-ghost">Ghost</button>
+          <button class="btn btn-link">Link</button>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Button Sizes</div>
+        <div class="flex gap-sm" style="align-items: center;">
+          <button class="btn btn-default btn-sm">Small</button>
+          <button class="btn btn-default">Default</button>
+          <button class="btn btn-default btn-lg">Large</button>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Button States</div>
+        <div class="flex gap-sm" style="flex-wrap: wrap;">
+          <button class="btn btn-default">Normal</button>
+          <button class="btn btn-default" disabled>Disabled</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Form Elements -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Form Elements</h2>
+        <p class="section-description">Input fields, selects, checkboxes, radios, and switches.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Text Input</div>
+        <input type="text" class="input" placeholder="Enter text here...">
+        <input type="text" class="input" value="Filled input" style="margin-top: 0.5rem;">
+        <input type="text" class="input" value="Disabled input" disabled style="margin-top: 0.5rem;">
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Textarea</div>
+        <textarea class="textarea" placeholder="Enter multiple lines of text..."></textarea>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Select</div>
+        <select class="select">
+          <option>Option 1</option>
+          <option>Option 2</option>
+          <option>Option 3</option>
+        </select>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Checkbox</div>
+        <div class="flex flex-col gap-sm">
+          <label class="checkbox-wrapper">
+            <input type="checkbox" class="checkbox">
+            <span>Unchecked checkbox</span>
+          </label>
+          <label class="checkbox-wrapper">
+            <input type="checkbox" class="checkbox" checked>
+            <span>Checked checkbox</span>
+          </label>
+          <label class="checkbox-wrapper">
+            <input type="checkbox" class="checkbox" disabled>
+            <span>Disabled checkbox</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Radio</div>
+        <div class="flex flex-col gap-sm">
+          <label class="radio-wrapper">
+            <input type="radio" name="radio-example" class="radio">
+            <span>Option 1</span>
+          </label>
+          <label class="radio-wrapper">
+            <input type="radio" name="radio-example" class="radio" checked>
+            <span>Option 2 (selected)</span>
+          </label>
+          <label class="radio-wrapper">
+            <input type="radio" name="radio-example" class="radio" disabled>
+            <span>Option 3 (disabled)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Switch</div>
+        <div class="flex flex-col gap-sm">
+          <label class="switch-wrapper">
+            <input type="checkbox" class="switch">
+            <span>Toggle switch (off)</span>
+          </label>
+          <label class="switch-wrapper">
+            <input type="checkbox" class="switch" checked>
+            <span>Toggle switch (on)</span>
+          </label>
+          <label class="switch-wrapper">
+            <input type="checkbox" class="switch" disabled>
+            <span>Toggle switch (disabled)</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cards -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Cards</h2>
+        <p class="section-description">Container components for grouping related content.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Basic Card</div>
+        <div class="card">
+          <div class="card-content">
+            <p>This is a basic card with content only.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Card with Header</div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Card Title</div>
+            <div class="card-description">Card description text goes here.</div>
+          </div>
+          <div class="card-content">
+            <p>Card content area with main information.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Card with Footer</div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Complete Card</div>
+            <div class="card-description">Card with header, content, and footer.</div>
+          </div>
+          <div class="card-content">
+            <p>Main content goes here.</p>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-outline btn-sm">Action</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Badges -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Badges</h2>
+        <p class="section-description">Small status indicators and labels.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Badge Variants</div>
+        <div class="flex gap-sm" style="flex-wrap: wrap; align-items: center;">
+          <span class="badge badge-default">Default</span>
+          <span class="badge badge-secondary">Secondary</span>
+          <span class="badge badge-destructive">Destructive</span>
+          <span class="badge badge-outline">Outline</span>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Badge Usage</div>
+        <div class="flex gap-sm" style="flex-wrap: wrap; align-items: center;">
+          <span class="badge badge-default">Active</span>
+          <span class="badge badge-secondary">Draft</span>
+          <span class="badge badge-outline">Completed</span>
+          <span class="badge badge-destructive">Error</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Alerts -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Alerts</h2>
+        <p class="section-description">Informational messages and notifications.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Info Alert</div>
+        <div class="alert">
+          <div class="alert-icon">ℹ</div>
+          <div class="alert-content">
+            <div class="alert-title">Information</div>
+            <div class="alert-description">This is an informational alert message.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Destructive Alert</div>
+        <div class="alert alert-destructive">
+          <div class="alert-icon">⚠</div>
+          <div class="alert-content">
+            <div class="alert-title">Error</div>
+            <div class="alert-description">This is a destructive/error alert message.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Breadcrumbs -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Breadcrumbs</h2>
+        <p class="section-description">Navigation breadcrumb trails.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Breadcrumb Navigation</div>
+        <nav class="breadcrumb">
+          <a href="#">Home</a>
+          <span class="breadcrumb-separator">/</span>
+          <a href="#">Projects</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Current Page</span>
+        </nav>
+      </div>
+    </section>
+
+    <!-- Custom Components: Navbar -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Navbar</h2>
+        <p class="section-description">Top navigation bar component.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Navbar Example</div>
+        <div class="navbar">
+          <div class="navbar-title">MWPLU</div>
+          <div class="header-actions">
+            <button class="btn-icon">👤</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Custom Components: Chat Messages -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Chat Messages</h2>
+        <p class="section-description">Message components for chat interface.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">User Message</div>
+        <div class="chat-message chat-message-user">
+          <div class="chat-avatar chat-avatar-user">U</div>
+          <div class="chat-content">
+            <p>This is a user message. It appears with a blue avatar and light grey background.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Bot Message</div>
+        <div class="chat-message chat-message-bot">
+          <div class="chat-avatar chat-avatar-bot">B</div>
+          <div class="chat-content">
+            <p>This is a bot message. It appears with a grey avatar and white background.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Custom Components: Chat Input -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Chat Input</h2>
+        <p class="section-description">Input component for chat interface.</p>
+      </div>
+
+      <div class="component-example">
+        <div style="border-top: 1px solid var(--border-light); padding-top: 1rem;">
+          <div style="display: flex; align-items: flex-end; gap: 0.5rem; border: 1px solid var(--border-medium); border-radius: 0.75rem; background: rgba(249, 250, 251, 0.5); padding: 0.75rem; max-width: 56rem; margin: 0 auto; transition: border-color 0.2s;">
+            <div style="position: relative; flex: 1; min-width: 0;">
+              <textarea class="textarea" placeholder="Quelle est la hauteur maximale autorisée ? Puis-je construire un garage ?" style="min-height: 44px; max-height: 200px; border: 0; background: transparent; padding: 0.5rem 2.5rem 0.5rem 0.5rem; resize: none; overflow: hidden; box-shadow: none; font-size: 0.9375rem; line-height: 1.5;"></textarea>
+            </div>
+            <button class="btn btn-default" style="height: 32px; width: 32px; padding: 0; border-radius: 0.5rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; background: #000; color: #fff; border: none; margin-bottom: 0;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Custom Components: Project Card -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Project Card</h2>
+        <p class="section-description">Card component for displaying project information.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Project Card Example</div>
+        <div class="project-card">
+          <div class="project-card-header">
+            <div style="flex: 1;">
+              <div class="project-card-title">📁 Mon Projet</div>
+              <div class="project-card-meta">
+                <span>📍</span>
+                <span>123 Rue Example, Paris</span>
+              </div>
+            </div>
+            <span class="badge badge-default" style="font-weight: 600;">Actif</span>
+          </div>
+          <div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-secondary);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <span style="font-size: 1rem;">💬</span>
+              <span>3 conversations</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--text-muted);">
+              <span style="font-size: 0.875rem;">🕐</span>
+              <span>Mis à jour il y a 2 heures</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Custom Components: Conversation Card -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Conversation Card</h2>
+        <p class="section-description">Card component for displaying conversation information.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Conversation Card Example</div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Conversation</div>
+            <div class="card-description">
+              <span>📍</span>
+              <span>Document PLU</span>
+            </div>
+          </div>
+          <div class="card-content">
+            <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+              Dernier message de la conversation...
+            </p>
+            <div style="font-size: 0.8125rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+              <span style="font-size: 0.875rem;">🕐</span>
+              <span>Mis à jour il y a 1 heure</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tabs -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Tabs</h2>
+        <p class="section-description">Tab navigation component.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Tab Navigation</div>
+        <div style="background: var(--bg-tertiary); padding: 0.25rem; border-radius: var(--radius-md); display: inline-flex; gap: 0.25rem;">
+          <button class="btn btn-secondary" style="background: var(--bg-primary); box-shadow: var(--shadow-sm);">Tab 1</button>
+          <button class="btn btn-secondary">Tab 2</button>
+          <button class="btn btn-secondary">Tab 3</button>
+        </div>
+        <div style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border-light); border-radius: var(--radius-md);">
+          <p>Tab content area</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Progress -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Progress</h2>
+        <p class="section-description">Progress indicators and loading states.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Progress Bar</div>
+        <div style="width: 100%; height: 8px; background: var(--bg-tertiary); border-radius: 9999px; overflow: hidden;">
+          <div style="width: 60%; height: 100%; background: var(--text-primary); transition: width 0.3s;"></div>
+        </div>
+        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">60% complete</p>
+      </div>
+    </section>
+
+    <!-- Skeleton Loaders -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Skeleton Loaders</h2>
+        <p class="section-description">Loading placeholders for content.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Text Skeleton</div>
+        <div style="background: var(--bg-tertiary); height: 1rem; border-radius: var(--radius-sm); width: 60%; margin-bottom: 0.5rem;"></div>
+        <div style="background: var(--bg-tertiary); height: 1rem; border-radius: var(--radius-sm); width: 80%;"></div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Card Skeleton</div>
+        <div class="card">
+          <div class="card-content">
+            <div style="background: var(--bg-tertiary); height: 1.5rem; border-radius: var(--radius-sm); width: 50%; margin-bottom: 1rem;"></div>
+            <div style="background: var(--bg-tertiary); height: 1rem; border-radius: var(--radius-sm); width: 100%; margin-bottom: 0.5rem;"></div>
+            <div style="background: var(--bg-tertiary); height: 1rem; border-radius: var(--radius-sm); width: 75%;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Separator -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Separator</h2>
+        <p class="section-description">Visual dividers and separators.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Horizontal Separator</div>
+        <div>
+          <p>Content above</p>
+          <hr style="border: none; border-top: 1px solid var(--border-light); margin: 1rem 0;">
+          <p>Content below</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tooltip -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Tooltip</h2>
+        <p class="section-description">Hover tooltips for additional information.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Tooltip Example</div>
+        <div style="position: relative; display: inline-block;">
+          <button class="btn btn-outline">Hover me</button>
+          <div style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; background: var(--text-primary); color: var(--bg-primary); border-radius: var(--radius-sm); font-size: 0.75rem; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s;">
+            Tooltip text
+          </div>
+        </div>
+        <p style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">(Hover state shown for reference)</p>
+      </div>
+    </section>
+
+    <!-- Accordion -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Accordion</h2>
+        <p class="section-description">Collapsible content sections.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Accordion Example</div>
+        <div style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden;">
+          <div style="padding: 1rem; border-bottom: 1px solid var(--border-light); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600;">Accordion Item 1</span>
+            <span>▼</span>
+          </div>
+          <div style="padding: 1rem; background: var(--bg-secondary);">
+            <p style="margin: 0; color: var(--text-secondary);">Accordion content goes here.</p>
+          </div>
+          <div style="padding: 1rem; border-top: 1px solid var(--border-light); cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600;">Accordion Item 2</span>
+            <span>▶</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dialog -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Dialog</h2>
+        <p class="section-description">Modal dialogs and overlays.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Dialog Example</div>
+        <div style="position: relative; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1.5rem; max-width: 400px; margin: 0 auto; box-shadow: var(--shadow-lg);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+            <div>
+              <h3 style="margin: 0 0 0.25rem 0;">Dialog Title</h3>
+              <p style="margin: 0; font-size: 0.875rem; color: var(--text-secondary);">Dialog description text.</p>
+            </div>
+            <button class="btn-icon" style="font-size: 1.25rem;">✕</button>
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <p>Dialog content goes here.</p>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn btn-outline btn-sm">Cancel</button>
+            <button class="btn btn-default btn-sm">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dropdown Menu -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Dropdown Menu</h2>
+        <p class="section-description">Context menus and dropdowns.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Dropdown Menu Example</div>
+        <div style="position: relative; display: inline-block;">
+          <button class="btn btn-outline">Open Menu ▼</button>
+          <div style="position: absolute; top: 100%; left: 0; margin-top: 0.25rem; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); min-width: 200px; padding: 0.25rem; z-index: 50;">
+            <div style="padding: 0.5rem 0.75rem; cursor: pointer; border-radius: var(--radius-sm); transition: background 0.2s;">Menu Item 1</div>
+            <div style="padding: 0.5rem 0.75rem; cursor: pointer; border-radius: var(--radius-sm); transition: background 0.2s;">Menu Item 2</div>
+            <hr style="border: none; border-top: 1px solid var(--border-light); margin: 0.25rem 0;">
+            <div style="padding: 0.5rem 0.75rem; cursor: pointer; border-radius: var(--radius-sm); transition: background 0.2s; color: var(--accent-red);">Delete</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Color Palette -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Color Palette</h2>
+        <p class="section-description">Design system color tokens.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Primary Colors</div>
+        <div class="flex gap-sm" style="flex-wrap: wrap;">
+          <div style="width: 100px; height: 100px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Primary</div>
+            <div style="font-size: 0.625rem; color: var(--text-muted);">#ffffff</div>
+          </div>
+          <div style="width: 100px; height: 100px; background: var(--text-primary); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Text</div>
+            <div style="font-size: 0.625rem; opacity: 0.8;">#000000</div>
+          </div>
+          <div style="width: 100px; height: 100px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Secondary</div>
+            <div style="font-size: 0.625rem; color: var(--text-muted);">#f9fafb</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Accent Colors</div>
+        <div class="flex gap-sm" style="flex-wrap: wrap;">
+          <div style="width: 100px; height: 100px; background: var(--accent-green); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Green</div>
+            <div style="font-size: 0.625rem; opacity: 0.8;">#10b981</div>
+          </div>
+          <div style="width: 100px; height: 100px; background: var(--accent-blue); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Blue</div>
+            <div style="font-size: 0.625rem; opacity: 0.8;">#3b82f6</div>
+          </div>
+          <div style="width: 100px; height: 100px; background: var(--accent-purple); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Purple</div>
+            <div style="font-size: 0.625rem; opacity: 0.8;">#8b5cf6</div>
+          </div>
+          <div style="width: 100px; height: 100px; background: var(--accent-red); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
+            <div style="font-size: 0.75rem; font-weight: 600;">Red</div>
+            <div style="font-size: 0.625rem; opacity: 0.8;">#ef4444</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Spacing System -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Spacing System</h2>
+        <p class="section-description">Consistent spacing scale using rem units.</p>
+      </div>
+
+      <div class="component-example">
+        <div class="component-example-label">Spacing Scale</div>
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="width: 0.5rem; height: 0.5rem; background: var(--text-primary); border-radius: 50%;"></div>
+            <span>XS: 0.5rem (8px)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="width: 1rem; height: 1rem; background: var(--text-primary); border-radius: 50%;"></div>
+            <span>SM: 1rem (16px)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="width: 1.5rem; height: 1.5rem; background: var(--text-primary); border-radius: 50%;"></div>
+            <span>MD: 1.5rem (24px)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="width: 2rem; height: 2rem; background: var(--text-primary); border-radius: 50%;"></div>
+            <span>LG: 2rem (32px)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="width: 3rem; height: 3rem; background: var(--text-primary); border-radius: 50%;"></div>
+            <span>XL: 3rem (48px)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="padding: 2rem 0; text-align: center; color: var(--text-muted); border-top: 1px solid var(--border-light); margin-top: 3rem;">
+      <p style="margin: 0;">MWPLU UI Style Reference - Last updated 2024</p>
+    </footer>
+  </div>
+
+  <script>
+    // Theme Toggle Functionality
+    (function() {
+      const themeToggle = document.getElementById('theme-toggle');
+      const themeIcon = document.getElementById('theme-icon');
+      const html = document.documentElement;
+      
+      // Get saved theme or detect system preference
+      function getInitialTheme() {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+          return savedTheme;
+        }
+        // Detect system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          return 'dark';
+        }
+        return 'light';
+      }
+      
+      // Apply theme
+      function applyTheme(theme) {
+        if (theme === 'dark') {
+          html.classList.add('dark');
+          themeIcon.textContent = '☀️';
+          localStorage.setItem('theme', 'dark');
+        } else {
+          html.classList.remove('dark');
+          themeIcon.textContent = '🌙';
+          localStorage.setItem('theme', 'light');
+        }
+      }
+      
+      // Initialize theme
+      const initialTheme = getInitialTheme();
+      applyTheme(initialTheme);
+      
+      // Toggle theme on button click
+      themeToggle.addEventListener('click', () => {
+        const currentTheme = html.classList.contains('dark') ? 'dark' : 'light';
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
+      });
+      
+      // Listen for system theme changes
+      if (window.matchMedia) {
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        mediaQuery.addEventListener('change', (e) => {
+          // Only auto-switch if user hasn't manually set a preference
+          if (!localStorage.getItem('theme')) {
+            applyTheme(e.matches ? 'dark' : 'light');
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
+

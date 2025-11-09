@@ -1,5 +1,352 @@
 # Changelog
 
+## 2025-01-XX - Improved UI Style Reference: Contrast, Hierarchy, and Personality
+
+### Fixed
+- **WCAG AA Contrast Compliance**: Fixed critical contrast issues in dark mode
+  - Updated `--text-secondary` from `#d1d5db` to `#e5e7eb` (meets 4.5:1 ratio)
+  - Updated `--text-muted` from `#9ca3af` to `#b1b5bb` (WCAG AA compliant)
+  - All text now meets minimum 4.5:1 contrast ratio for normal text
+
+### Enhanced
+- **Visual Hierarchy**: Improved card elevation and separation
+  - Enhanced shadow system for dark mode (stronger shadows with better opacity)
+  - Added hover states with `translateY` transforms for cards
+  - Improved border colors on hover for better visual feedback
+  - Cards now have clearer elevation levels (sm, md, lg)
+
+- **Badge Visibility**: Made badges more prominent and readable
+  - Added borders to all badge variants for better definition
+  - Enhanced `badge-secondary` with darker background in dark mode (`#333333`)
+  - Increased `badge-outline` border width to 1.5px for better visibility
+  - Added transitions for smooth interactions
+
+- **Destructive Alerts**: Made error alerts attention-grabbing and RED
+  - Light mode: Bright red border (`#ef4444`) with 2px width and subtle glow
+  - Dark mode: Dark red background (`#7f1d1d`) with bright red border and glow effect
+  - High contrast text colors for maximum readability
+  - Added subtle shadow/glow effects for immediate attention
+
+- **Micro-interactions & Personality**: Added subtle animations and warmth
+  - Button hover states with `translateY(-1px)` and shadow effects
+  - Icon buttons scale to 1.05 on hover
+  - Focus states with blue outline and offset for accessibility
+  - Form inputs have blue focus rings with subtle shadow
+  - Smooth transitions (0.2s ease) throughout for polished feel
+  - Component examples have hover shadow effects
+
+- **HTML Examples**: Updated inline styles for better visibility
+  - Increased icon sizes for conversation count and timestamps
+  - Improved font sizes for better readability
+  - Enhanced badge font-weight for prominence
+
+### Files Modified
+- `style-reference.css`: Updated CSS variables, enhanced shadows, improved badges, fixed alerts, added micro-interactions
+- `style-reference.html`: Updated inline styles for icons and text sizes
+
+### Result
+- All text meets WCAG AA accessibility standards
+- Clear visual hierarchy with proper elevation and separation
+- Destructive alerts immediately grab attention
+- More polished, interactive feel while maintaining minimalism
+- Better contrast and readability across all components
+
+## 2025-01-XX - Created UI Style Reference Page
+
+### Added
+- **Style Reference Page**: Created comprehensive standalone HTML reference page (`style-reference.html`) showcasing all UI components
+  - **Purpose**: Visual reference guide for the clean, minimalist Cloud UI aesthetic design system
+  - **Features**:
+    - Complete component library display (all shadcn/ui components + custom components)
+    - Clean Cloud UI styling with generous whitespace and subtle borders
+    - Code syntax highlighting matching Cloud UI style (purple keywords, green strings, light blue types)
+    - Organized sections for Typography, Buttons, Forms, Cards, Badges, Alerts, Breadcrumbs, and custom components
+    - Includes examples of: Navbar, ChatMessage, ChatInput, ProjectCard, ConversationCard
+    - Color palette and spacing system documentation
+  - **Files Created**:
+    - `style-reference.html`: Standalone HTML reference page with all component examples
+    - `style-reference.css`: Comprehensive stylesheet with design tokens and component styles
+  - **Design Principles Applied**:
+    - Light theme only (white/very light grey backgrounds)
+    - Generous whitespace and padding throughout
+    - Subtle borders (light grey)
+    - Clean typography using Lato font
+    - Green accents for success/checkmarks
+    - Minimal shadows
+    - Professional, minimalist aesthetic
+  - **Result**: Complete visual reference system for maintaining consistent UI design across the application
+
+## 2025-01-XX - Removed Inline Map Card Component
+
+### Removed
+- **Inline Map Card (MapInlineCard)**: Removed the inline map card component that was causing UI bugs where it got stuck over artifact documents
+  - **Reason**: Redundant functionality - the zone card ("Zone Grenoble Voir la carte complète") already provides access to the map via the right panel
+  - **Changes Made**:
+    - Removed `MapInlineCard` function component from `components/InlineArtifactCard.tsx` (~190 lines)
+    - Removed 'map' case from switch statement in `InlineArtifactCard`
+    - Updated props interface to remove 'map' from type union (`'zone' | 'document'` only)
+    - Removed Leaflet imports (MapContainer, TileLayer, Marker, Polygon, L) that were only used by MapInlineCard
+    - Removed map artifact generation from `introArtifacts` useMemo in chat page
+    - Added filters to exclude map artifacts from rendering in both intro cards and message artifacts
+  - **What Was Kept**:
+    - `MapArtifact.tsx` component (used in right panel via MapCard)
+    - `ZoneInlineCard` component (opens map tab in right panel)
+    - Right panel map tab functionality
+    - Map artifact store state (still tracked for right panel)
+  - **Files Modified**: 
+    - `components/InlineArtifactCard.tsx`: Removed MapInlineCard, updated types
+    - `app/chat/[conversation_id]/page.tsx`: Removed map artifact generation, added filters
+  - **Result**: No more UI bugs with inline map cards overlapping documents. Zone cards remain and provide map access via right panel.
+
+## 2025-01-XX - Fixed Conversation Loading, Progressive Display, and Mobile Card Persistence
+
+### Fixed
+- **Previous Conversation Not Showing Content**: Fixed issue where existing conversations didn't display messages when navigating back
+  - **Root Cause**: `setLoading(false)` wasn't always called due to early returns and error handling
+  - **Solution**: 
+    - Moved `setLoading(false)` to `finally` block to guarantee execution
+    - Ensure messages are always set (even if empty) before clearing loading state
+    - Reset refs (`introSequenceStartedRef`, `hasAutoSwitchedToDocumentRef`) when conversation changes
+    - Added useEffect to reset refs on conversation_id change
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines 569-688, 272-276)
+  - **Result**: Existing conversations now display messages and content immediately when navigating back
+
+- **Progressive Display Not Happening for New Chats**: Fixed missing progressive "Retrieving map..." display for new conversations
+  - **Root Cause**: `introArtifacts` only generated when `enrichment.status !== 'pending'`, but enrichment starts as 'pending'
+  - **Solution**:
+    - Modified `introArtifacts` logic to show loading cards when enrichment has started (even if status is 'pending')
+    - Check if enrichment is in progress: `enrichment.status === 'enriching'` OR `(enrichment.status === 'pending' && conversation?.enrichment_status === 'pending')`
+    - Show zone artifact immediately when coordinates are available (even before cityId is set)
+    - Show map and document artifacts when enrichment is in progress or data is available
+    - Handle null artifact info gracefully by defaulting to 'loading' status
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines 127-232, 1065-1086)
+  - **Result**: New conversations now show loading cards immediately with "Récupération de la carte..." messages as enrichment starts
+
+- **InlineCard Persists on Mobile**: Fixed issue where inline artifact cards stayed visible on mobile when navigating away from chat page
+  - **Root Cause**: No route-based conditional rendering, artifact store state persisted across route changes
+  - **Solution**:
+    - Added `usePathname` import from `next/navigation`
+    - Added route check in intro artifacts rendering: only render when `pathname?.includes('/chat/')`
+    - Added cleanup useEffect to reset artifact refs when navigating away from chat page
+    - Handle null artifact info gracefully in rendering
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx` (lines 4, 21, 278-289, 1066)
+  - **Result**: Inline cards now disappear when navigating away from chat page on mobile
+
+## 2025-01-XX - Fixed Inline Artifact Cards Not Showing for New Conversations
+
+### Fixed
+- **Inline Artifact Cards for New Conversations**: Fixed issue where inline artifact cards were not displayed for new conversations without messages
+  - **Root Cause**: Cards were only rendered after assistant messages existed, but new conversations without messages should show cards as artifacts become ready during enrichment
+  - **Solution**: 
+    - Added `introArtifacts` useMemo hook that generates artifact references for new conversations (when `messages.length === 0`)
+    - Uses `detectArtifactsForMessage` with empty message and first message index to trigger "first-message" rule
+    - Checks artifact store state to progressively show map and document artifacts as they become available
+    - Added rendering section that displays intro cards when no messages exist and artifacts are ready
+    - Only shows intro cards when enrichment is in progress or complete (not pending)
+    - Prevents intro cards from showing for restored conversations (checks `introSequenceStartedRef`)
+  - **Files Modified**: `app/chat/[conversation_id]/page.tsx`
+    - Added `getArtifactId` import from `artifactDetection.ts`
+    - Added `introArtifacts` useMemo hook (lines 126-204)
+    - Added intro cards rendering section (lines 1021-1040)
+  - **Result**: New conversations without messages now show inline artifact cards progressively as enrichment completes (zone → map → document)
+
+## 2025-01-XX - Fixed Infinite Loop in Artifact Store Updates
+
+### Fixed
+- **Infinite Loop Prevention**: Fixed "Maximum update depth exceeded" error in artifact store synchronization
+  - Removed `updateArtifact` from useEffect dependency array (Zustand actions are stable)
+  - Added change detection guards in useEffect to prevent updates when status/data hasn't changed
+  - Added deep equality checks in `updateArtifact` store method to prevent unnecessary state updates
+  - Store now returns same state reference if no actual changes occurred (prevents re-renders)
+
+### Technical Details
+- Added `needsUpdate` checks before calling `updateArtifact` for zone, map, and document artifacts
+- Store method now compares current artifact state with updates before applying changes
+- Uses JSON.stringify for deep equality comparison of artifact data
+- Prevents infinite loops by ensuring updates only occur when data actually changes
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx`: Added change detection guards in artifact sync useEffect
+- `lib/stores/artifactStore.ts`: Added change detection in `updateArtifact` method to prevent unnecessary updates
+
+## 2025-01-XX - Artifact Synchronization and UX Enhancements
+
+### Added
+- **Hybrid Panel Opening**: Right panel now auto-opens on desktop when first artifact becomes ready
+  - Desktop (>=768px): Panel auto-opens when any artifact (zone/map/document) becomes ready
+  - Mobile (<768px): Panel stays closed until user clicks inline artifact card
+  - Auto-open only happens once per conversation (tracked via `hasAutoOpenedRef`)
+  - Manual opening via inline card click works on both desktop and mobile
+
+- **Smooth Animations**: Added Claude.ai-style transitions throughout the artifact system
+  - Inline artifact cards: Fade-in and slide-up animation when appearing (`animate-in fade-in slide-in-from-bottom-4 duration-300`)
+  - Transition duration standardized to 300ms for consistent feel
+  - Right panel tab content: Smooth fade-in when switching tabs (`animate-in fade-in duration-300`)
+  - All hover states use `duration-300` for smoother interactions
+
+### Changed
+- **Variable Naming Standardization**: Standardized artifact tab state management
+  - Removed inconsistent `setActiveArtifactTab` reference
+  - All tab state now uses `activeTab` and `setActiveTab` from `useArtifactSync` hook exclusively
+  - Consistent naming throughout: `app/chat/[conversation_id]/page.tsx`, `components/ChatRightPanel.tsx`, `lib/hooks/useArtifactSync.ts`
+
+- **Panel Opening Logic**: Enhanced with hybrid behavior
+  - Auto-opens on desktop when first artifact ready (zone, map, or document)
+  - Stays closed on mobile until user interaction
+  - Resets auto-open tracking when conversation changes
+
+### Technical Details
+- Added `hasAutoOpenedRef` useRef to track panel auto-opening state
+- Added useEffect to auto-open panel when artifacts become ready (desktop only)
+- Added useEffect to reset auto-open ref on conversation change
+- Updated all InlineArtifactCard states (loading, ready, error) with animations
+- Enhanced ChatRightPanel tab content with fade-in animations
+- All transitions use Tailwind's built-in animation utilities for performance
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx`: Hybrid panel opening, naming standardization
+- `components/InlineArtifactCard.tsx`: Smooth animations for all card states
+- `components/ChatRightPanel.tsx`: Tab content fade-in animations
+- `lib/hooks/useArtifactSync.ts`: Already had consistent naming (verified)
+
+## 2025-11-XX - Track Artifacts Per Assistant Message
+
+### Added
+- **Artifact Detection Utility**: Created `lib/utils/artifactDetection.ts` with pattern-based artifact detection
+  - `detectArtifactsForMessage()`: Detects which artifacts to show based on message content and enrichment data
+  - Keyword pattern matching for map (carte, map, zonage, plan), document (document, règlement, PLU), and regulation context (hauteur, recul, COS, CES)
+  - Helper functions: `getArtifactId()`, `shouldShowArtifact()`
+  - Detection rules:
+    1. First assistant message: Always show zone artifact if cityId exists
+    2. Map mentions: Show map if pattern matches and mapGeometry exists
+    3. Document mentions: Show document if pattern matches and documentData exists
+    4. Regulation context: Show both map and document if regulation keywords match
+    5. Otherwise: No artifacts (keep chat clean)
+
+### Changed
+- **Message Metadata Storage**: Updated `handleSendMessage` in `app/chat/[conversation_id]/page.tsx` to store artifact references in message metadata
+  - New assistant messages now include `metadata.artifacts` array with artifact references
+  - Format: `{ artifacts: [{ type, artifactId, reason, timestamp }] }`
+  - Artifacts are detected using `detectArtifactsForMessage()` before message insertion
+- **Hybrid Message Enrichment**: Implemented message enrichment with metadata-first approach
+  - Priority 1: Use stored `metadata.artifacts` for new messages (explicit tracking)
+  - Priority 2: Fallback to pattern detection for existing messages (backward compatibility)
+  - Messages are enriched on load using `useMemo` hook for performance
+- **Artifact State Mapping**: Created `artifactMap` to map artifact references to actual data and status
+  - Maps artifact IDs to enrichment data (zone, map, document)
+  - Tracks artifact status (loading, ready, error) from enrichment progress
+  - Provides data structures compatible with `InlineArtifactCard` component
+- **Message Rendering**: Updated message rendering to display inline artifact cards
+  - Inline cards appear after assistant messages when artifacts are detected
+  - Cards sync with artifact state from enrichment hook
+  - Clicking cards opens right panel with appropriate tab (zone → map tab)
+
+### Technical Implementation
+- **Hybrid Approach**: Combines explicit metadata storage (new messages) with pattern detection (existing messages)
+- **Backward Compatibility**: Existing conversations work immediately via pattern detection
+- **Future-Proof**: New messages store explicit artifact references for reliability
+- **Performance**: Uses `useMemo` for message enrichment and artifact mapping to avoid unnecessary recalculations
+
+### Files Created
+- `lib/utils/artifactDetection.ts`: Artifact detection utility with pattern matching
+
+### Files Modified
+- `app/chat/[conversation_id]/page.tsx`: 
+  - Added artifact detection on message creation
+  - Implemented message enrichment with hybrid approach
+  - Added artifact state mapping
+  - Updated message rendering to show inline cards
+
+## 2025-11-XX - Inline Artifact Preview Cards
+
+### Added
+- **InlineArtifactCard Component**: Created inline artifact preview cards that sync with ChatRightPanel
+  - **ZoneInlineCard**: Shows zone analysis summary with status indicators (loading, ready, error)
+    - Displays zone name, type, INSEE code, constructibility status
+    - "Voir la carte complète" button that opens map tab in right panel
+  - **MapInlineCard**: Shows interactive map thumbnail with zone polygon preview
+    - Small Leaflet map (128px height) with disabled interactions for preview
+    - Shows zone polygon and center marker
+    - "Ouvrir la carte interactive" button
+  - **DocumentInlineCard**: Shows document metadata summary
+    - Displays document title, type, zone reference, update date
+    - "Lire le document" button
+- **Artifact Types**: Created `types/artifacts.ts` with TypeScript interfaces
+  - `ZoneArtifactData`: Complete zone information structure
+  - `MapArtifactData`: Map geometry and metadata structure
+  - `DocumentArtifactData`: Document content and metadata structure
+  - `ArtifactStatus`: Union type for loading states
+
+### Changed
+- **InlineArtifactCard**: Completely replaced existing component with new three-variant implementation
+  - New props interface: `type`, `artifactId`, `status`, `data`, `onViewInPanel`
+  - Zone cards route to map tab when clicked (per user requirement)
+  - MWPLU brand styling: black/white/grey color scheme, Lato font
+
+### Technical Implementation
+- **Component Structure**: Main component routes to appropriate variant based on `type` prop
+- **Map Thumbnail**: Uses Leaflet with disabled interactions (no zoom, drag, scroll)
+- **Status Indicators**: Loading spinner (Loader2), checkmark (CheckCircle), error icon (AlertCircle)
+- **Visual Design**: Compact cards that fit in chat flow with hover effects and smooth transitions
+- **Integration**: Clicking anywhere on card calls `onViewInPanel()` to sync with ChatRightPanel
+
+### Files Created
+- `types/artifacts.ts`: Artifact type definitions for zone, map, and document data structures
+
+### Files Modified
+- `components/InlineArtifactCard.tsx`: Complete replacement with new three-variant implementation
+
+## 2025-01-XX - Lazy Loading for Artifact Cards with Progressive Reveal
+
+### Added
+- **Artifact Card Components**: Created lazy-loading artifact card components with progressive reveal
+  - **ZoneAnalysisCard**: Displays zone analysis data with skeleton → loading → ready → error states
+  - **MapCard**: Wraps MapArtifact with lazy loading states and smooth transitions
+  - **DocumentCard**: Wraps DocumentViewer with lazy loading states and smooth transitions
+  - All cards support: `skeleton` (immediate), `loading` (fetching), `ready` (content), `error` (retry)
+
+### Changed
+- **ChatRightPanel**: Refactored to orchestrate artifact loading states using enrichment progress
+  - Internal state management for each artifact (map, document)
+  - Updates artifact states based on `useEnrichment` progress (`loading` | `success` | `error`)
+  - Smooth transitions from skeleton → loading → ready with no layout shift
+  - Proper error handling with retry functionality
+- **Chat Page**: Updated to pass enrichment progress instead of status to ChatRightPanel
+  - Uses `enrichment.progress.map` and `enrichment.progress.document` directly
+  - Simplified status mapping logic
+
+### Technical Implementation
+- **Artifact States**: Each artifact card manages 4 states:
+  - `skeleton`: Shows ArtifactSkeleton immediately on mount
+  - `loading`: Shows spinner with loading message
+  - `ready`: Shows actual content (MapArtifact, DocumentViewer, or zone analysis)
+  - `error`: Shows ErrorCard with retry button
+- **Progressive Updates**: ChatRightPanel updates artifact states as enrichment completes
+  - Uses `useEffect` to sync with enrichment progress
+  - Prevents infinite loops by using functional state updates
+- **Smooth Transitions**: All state changes use CSS transitions (`transition-opacity duration-300`)
+- **Error Recovery**: Error states show retry button that triggers enrichment retry
+- **No Layout Shift**: Skeleton components match content dimensions to prevent layout shift
+
+### Files Created
+- `components/chat/artifacts/ZoneAnalysisCard.tsx`: Zone analysis card with lazy loading
+- `components/chat/artifacts/MapCard.tsx`: Map artifact card with lazy loading
+- `components/chat/artifacts/DocumentCard.tsx`: Document artifact card with lazy loading
+
+### Files Modified
+- `components/ChatRightPanel.tsx`:
+  - Added internal artifact state management
+  - Orchestrates artifact loading based on enrichment progress
+  - Uses new artifact card components instead of direct rendering
+- `app/chat/[conversation_id]/page.tsx`:
+  - Updated to pass `mapProgress` and `documentProgress` instead of status
+  - Removed unused `getArtifactStatus` helper function
+
+### User Experience
+- **Before**: Artifacts tried to load data on mount, blocking UI if data not ready
+- **After**: Artifacts show skeleton immediately, load data progressively, smooth transitions
+- **Result**: Better perceived performance, no layout shift, graceful error handling
+
 ## 2025-01-XX - Progressive Loading: Show Interface Immediately, Enrich in Background
 
 ### Changed

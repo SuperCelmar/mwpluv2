@@ -210,3 +210,8 @@ supabase db push
 This will apply all migrations from the `supabase/migrations/` folder automatically.
 
 
+
+
+
+
+

@@ -16,3 +16,8 @@ COMMENT ON COLUMN zones.geometry IS 'GeoJSON multipolygon geometry from Carto AP
 COMMENT ON TABLE zones IS 'Shared table: PLU zones within zonings - now includes geometry for map display';
 
 
+
+
+
+
+

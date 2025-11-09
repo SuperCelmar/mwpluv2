@@ -12,3 +12,8 @@ CREATE POLICY "Users can update own research history"
 COMMENT ON POLICY "Users can update own research history" ON v2_research_history IS 'Allows authenticated users to update their own research history records, enabling conversation_id and project_id to be linked after initial creation';
 
 
+
+
+
+
+
