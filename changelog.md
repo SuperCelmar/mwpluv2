@@ -1,5 +1,21 @@
 # Changelog
 
+## 2025-01-XX - Brand Assets Integration
+
+### Added
+- **Favicon metadata**: Added favicon configuration to `app/layout.tsx` using Next.js Metadata API
+  - References `/favicon/favicon.ico` for browser tab icon
+
+### Changed
+- **Brand logo integration**: Replaced text "MWPLU" placeholders with SVG logo image across all components
+  - **Navbar**: Replaced text heading with logo (h-8 size)
+  - **ChatArea**: Replaced large text heading with logo in initial state (h-20 size)
+  - **LeftSidebar (PLU)**: Replaced text heading with logo (h-8 size)
+  - **ChatLeftSidebar**: Replaced text heading with logo in expanded state (h-8 size)
+  - **EmptyState**: Replaced text heading with logo (h-16 size)
+- All logos use Next.js `Image` component for optimized loading with appropriate sizing for each context
+- Logo maintains aspect ratio with `w-auto` and uses `priority` flag for above-the-fold instances
+
 ## 2025-01-27 - Comprehensive Style Guide Documentation
 
 ### Added

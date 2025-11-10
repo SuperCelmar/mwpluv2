@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -122,7 +123,16 @@ export function ChatArea() {
       <div className="flex-1 flex flex-col items-center justify-center p-32" style={{ backgroundColor: '#FFFFFF' }}>
         <div className="max-w-2xl w-full space-y-32 text-center">
           <div className="space-y-16">
-            <h1 className="text-5xl font-bold" style={{ color: '#000000' }}>MWPLU</h1>
+            <div className="flex justify-center">
+              <Image
+                src="/MWPLU.svg"
+                alt="MWPLU"
+                width={300}
+                height={100}
+                className="h-20 w-auto"
+                priority
+              />
+            </div>
             <h2 className="text-2xl font-semibold" style={{ color: '#000000' }}>
               Analysez votre PLU en quelques secondes
             </h2>

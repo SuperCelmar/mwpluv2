@@ -12,6 +12,9 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: 'MWPLU - Analyse PLU',
   description: 'Analysez votre PLU en quelques secondes',
+  icons: {
+    icon: '/favicon/favicon.ico',
+  },
 };
 
 export default function RootLayout({

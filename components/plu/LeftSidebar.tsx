@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Plus, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,7 +22,14 @@ export function LeftSidebar() {
     <div className="w-[280px] flex flex-col h-screen" style={{ borderRight: '1px solid #E5E5E5', backgroundColor: '#FFFFFF' }}>
       <div className="p-16 space-y-16">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold" style={{ color: '#000000' }}>MWPLU</h1>
+          <Image
+            src="/MWPLU.svg"
+            alt="MWPLU"
+            width={120}
+            height={40}
+            className="h-8 w-auto"
+            priority
+          />
         </div>
 
         <Button

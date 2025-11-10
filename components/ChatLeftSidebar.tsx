@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Plus, MessageSquare, Folder, User, ChevronLeft, Menu } from 'lucide-react';
+import Image from 'next/image';
+import { Plus, MessageSquare, Folder, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -87,14 +88,14 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
           {collapsed ? (
             /* Collapsed: Unified icon container */
             <div className="p-4 flex flex-col items-center gap-2">
-              {/* Hamburger Menu */}
+              {/* Sidebar Toggle Icon */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setCollapsed(!collapsed)}
-                    className="w-10 h-10 transition-all duration-150"
+                    className="w-10 h-10 transition-all duration-150 group"
                     style={{ color: '#333333' }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = '#F5F5F5';
@@ -103,7 +104,17 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                       e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
-                    <Menu className="h-5 w-5" />
+                    <svg 
+                      width="20" 
+                      height="20" 
+                      viewBox="0 0 20 20" 
+                      fill="currentColor" 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      className="shrink-0 group-hover:scale-80 transition scale-100" 
+                      aria-hidden="true"
+                    >
+                      <path d="M16.5 4C17.3284 4 18 4.67157 18 5.5V14.5C18 15.3284 17.3284 16 16.5 16H3.5C2.67157 16 2 15.3284 2 14.5V5.5C2 4.67157 2.67157 4 3.5 4H16.5ZM7 15H16.5C16.7761 15 17 14.7761 17 14.5V5.5C17 5.22386 16.7761 5 16.5 5H7V15ZM3.5 5C3.22386 5 3 5.22386 3 5.5V14.5C3 14.7761 3.22386 15 3.5 15H6V5H3.5Z"></path>
+                    </svg>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
@@ -187,13 +198,12 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
             /* Expanded: Header with toggle and navigation */
             <>
               <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h1 className="text-2xl font-bold" style={{ color: '#000000' }}>MWPLU</h1>
+                <div className="flex items-center gap-3 mb-4">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setCollapsed(!collapsed)}
-                    className="h-8 w-8"
+                    className="h-8 w-8 group shrink-0"
                     style={{ color: '#333333' }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = '#F5F5F5';
@@ -202,8 +212,26 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                       e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <svg 
+                      width="20" 
+                      height="20" 
+                      viewBox="0 0 20 20" 
+                      fill="currentColor" 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      className="shrink-0 group-hover:scale-80 transition scale-100" 
+                      aria-hidden="true"
+                    >
+                      <path d="M16.5 4C17.3284 4 18 4.67157 18 5.5V14.5C18 15.3284 17.3284 16 16.5 16H3.5C2.67157 16 2 15.3284 2 14.5V5.5C2 4.67157 2.67157 4 3.5 4H16.5ZM7 15H16.5C16.7761 15 17 14.7761 17 14.5V5.5C17 5.22386 16.7761 5 16.5 5H7V15ZM3.5 5C3.22386 5 3 5.22386 3 5.5V14.5C3 14.7761 3.22386 15 3.5 15H6V5H3.5Z"></path>
+                    </svg>
                   </Button>
+                  <Image
+                    src="/MWPLU.svg"
+                    alt="MWPLU"
+                    width={120}
+                    height={40}
+                    className="h-8 w-auto"
+                    priority
+                  />
                 </div>
 
                 {/* New Conversation Button */}
