@@ -1,5 +1,66 @@
 # Changelog
 
+## 2025-01-08 (Evening) - Fix Analytics Schema API Access
+
+### Fixed
+- **Database Migration** (`supabase/migrations/20250108000005_remove_analytics_views.sql`):
+  - Removed unnecessary views `public.user_monthly_usage` and `public.chat_events`
+  - Views were created as a workaround but are not needed since analytics schema is properly exposed
+  - Tables exist in `analytics.user_monthly_usage` and `analytics.chat_events` and are accessed directly
+
+- **Database Migration** (`supabase/migrations/20250108000002_expose_analytics_schema.sql`):
+  - Exposed analytics schema to PostgREST API by granting USAGE and SELECT/INSERT permissions
+  - Added RLS policy to allow authenticated users to insert their own chat events
+  - Resolves 404 errors when querying `analytics.user_monthly_usage` and `analytics.chat_events`
+
+- **Configuration** (`supabase/config.toml`):
+  - Added "analytics" to exposed schemas array for local development
+  - PostgREST will now search analytics schema when resolving table names
+
+- **Code Updates**:
+  - Updated `lib/supabase/queries-profile.ts`: Changed `.from('analytics.user_monthly_usage')` to `.from('user_monthly_usage')`
+  - Updated `lib/supabase/queries-profile.ts`: Changed `.from('analytics.chat_events')` to `.from('chat_events')`
+  - Updated `lib/analytics.ts`: Changed `.from('analytics.chat_events')` to `.from('chat_events')`
+
+### Technical Details
+- PostgREST doesn't support dot notation (`schema.table`) in `.from()` method
+- When schemas are exposed, PostgREST searches them in order to find tables by name
+- Tables are accessed directly by name (e.g., `user_monthly_usage`) and PostgREST finds them in the analytics schema
+- RLS policies ensure users can only access their own data
+
+### Impact
+- Resolves 404 errors: `relation "public.analytics.user_monthly_usage" does not exist`
+- Analytics queries now work correctly via REST API
+- Profile page can now load user analytics data
+- Chat event logging continues to work
+
+### Production Deployment Note
+- **IMPORTANT**: After applying migration, expose analytics schema in Supabase Dashboard:
+  - Go to Settings > API > Exposed schemas
+  - Add "analytics" to the list of exposed schemas
+  - This is required for production API access
+
+## 2025-01-08 - Fix Infinite Recursion in Profiles RLS Policies
+
+### Fixed
+- **Database Migration** (`supabase/migrations/20250108000001_fix_profiles_rls_recursion.sql`):
+  - Fixed infinite recursion error (code: 42P17) in profiles table RLS policies
+  - Created `is_admin()` SECURITY DEFINER function to check admin status without triggering RLS
+  - Updated "Admins can view all profiles" policy to use `is_admin()` function
+  - Updated "Admins can update all profiles" policy to use `is_admin()` function
+  - Function bypasses RLS using SECURITY DEFINER to prevent circular policy evaluation
+
+### Technical Details
+- The admin policies were querying the `profiles` table directly, which triggered RLS policies again
+- This created an infinite recursion loop when checking admin status
+- Solution: Created a helper function with SECURITY DEFINER that bypasses RLS when checking admin status
+- The function is STABLE and grants execute permission to authenticated users
+
+### Impact
+- Resolves 500 Internal Server Error when querying profiles, v2_conversations, and other tables
+- Admin users can now properly access all profiles without recursion errors
+- All queries that depend on profiles table RLS policies now work correctly
+
 ## 2025-01-07 - Add Cached Display Name in Sidebar
 
 ### Added

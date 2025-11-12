@@ -69,7 +69,7 @@ export async function logChatEvent(params: ChatEventParams): Promise<void> {
     };
 
     const { error } = await supabase
-      .from('analytics.chat_events')
+      .from('chat_events')
       .insert({
         conversation_id,
         message_id,

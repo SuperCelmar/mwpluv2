@@ -353,10 +353,10 @@ export async function getUserAnalytics(userId: string): Promise<{
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
 
-    // Try to get monthly usage from analytics schema
-    // Note: This may require RPC function if schema is not directly accessible
+    // Get monthly usage from analytics schema
+    // Note: analytics schema is exposed to PostgREST, so we use table name directly
     const { data: monthlyUsage, error: monthlyError } = await supabase
-      .from('analytics.user_monthly_usage')
+      .from('user_monthly_usage')
       .select('message_count, cost_total, tokens_total')
       .eq('user_id', userId)
       .eq('year', currentYear)
@@ -375,7 +375,7 @@ export async function getUserAnalytics(userId: string): Promise<{
     } else {
       // Fallback: count from chat_events in analytics schema
       const { count: chatEventsCount, error: chatEventsError } = await supabase
-        .from('analytics.chat_events')
+        .from('chat_events')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
 
@@ -385,7 +385,7 @@ export async function getUserAnalytics(userId: string): Promise<{
 
       // Get cost and tokens from chat_events
       const { data: chatEvents, error: chatEventsDataError } = await supabase
-        .from('analytics.chat_events')
+        .from('chat_events')
         .select('cost_total, tokens_total')
         .eq('user_id', userId);
 
