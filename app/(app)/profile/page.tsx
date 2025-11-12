@@ -299,9 +299,6 @@ export default function ProfilePage() {
                   <p className="text-base text-neutral-900 dark:text-neutral-100">
                     {user.email || "N/A"}
                   </p>
-                  <Badge variant="outline" className="ml-2">
-                    Verrouillé
-                  </Badge>
                 </div>
               </div>
             </div>
