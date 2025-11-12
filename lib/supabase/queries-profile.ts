@@ -18,11 +18,23 @@ export async function getUserProfile(userId: string): Promise<{
       .single();
 
     if (profileError) {
+      // PGRST116 means "JSON object requested, multiple (or no) rows returned"
+      // This is expected when no profile exists yet
+      // Check both code and message to handle different Supabase client versions
+      const errorCode = (profileError as any).code;
+      const errorMessage = profileError.message || '';
+      if (errorCode === 'PGRST116' || errorMessage.includes('JSON object requested')) {
+        console.warn(`No profile found for user ${userId}`);
+        return { profile: null, error: null };
+      }
+      // For other errors, return the error
+      console.error('Error fetching profile:', profileError);
       return { profile: null, error: profileError };
     }
 
     return { profile, error: null };
   } catch (error) {
+    console.error('Unexpected error in getUserProfile:', error);
     return {
       profile: null,
       error: error instanceof Error ? error : new Error('Unknown error'),
@@ -294,7 +306,9 @@ export async function requestAccountDeletion(
 }
 
 /**
- * Get user analytics from analytics schema
+ * Get user analytics
+ * Note: Most analytics tables have been removed. Only commandsCount is actively queried from v2_messages.
+ * Other fields (messageCount, totalCost, totalTokens, downloadsCount, starsCount, reviewsCount) return 0.
  */
 export async function getUserAnalytics(userId: string): Promise<{
   messageCount: number;
@@ -307,71 +321,6 @@ export async function getUserAnalytics(userId: string): Promise<{
   error: Error | null;
 }> {
   try {
-    // Get current month usage from analytics.user_monthly_usage
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth() + 1;
-
-    // Get monthly usage from analytics schema
-    // Note: analytics schema is exposed to PostgREST, so we use table name directly
-    const { data: monthlyUsage, error: monthlyError } = await supabase
-      .from('user_monthly_usage')
-      .select('message_count, cost_total, tokens_total')
-      .eq('user_id', userId)
-      .eq('year', currentYear)
-      .eq('month', currentMonth)
-      .single();
-
-    // If no monthly usage found, try to aggregate from chat_events
-    let messageCount = 0;
-    let totalCost = 0;
-    let totalTokens = 0;
-
-    if (monthlyUsage) {
-      messageCount = monthlyUsage.message_count || 0;
-      totalCost = Number(monthlyUsage.cost_total) || 0;
-      totalTokens = Number(monthlyUsage.tokens_total) || 0;
-    } else {
-      // Fallback: count from chat_events in analytics schema
-      const { count: chatEventsCount, error: chatEventsError } = await supabase
-        .from('chat_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId);
-
-      if (!chatEventsError && chatEventsCount) {
-        messageCount = chatEventsCount;
-      }
-
-      // Get cost and tokens from chat_events
-      const { data: chatEvents, error: chatEventsDataError } = await supabase
-        .from('chat_events')
-        .select('cost_total, tokens_total')
-        .eq('user_id', userId);
-
-      if (!chatEventsDataError && chatEvents) {
-        totalCost = chatEvents.reduce((sum, event) => sum + (Number(event.cost_total) || 0), 0);
-        totalTokens = chatEvents.reduce((sum, event) => sum + (Number(event.tokens_total) || 0), 0);
-      }
-    }
-
-    // Count downloads
-    const { count: downloadsCount, error: downloadsError } = await supabase
-      .from('downloads')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-
-    // Count stars (ratings)
-    const { count: starsCount, error: starsError } = await supabase
-      .from('ratings')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-
-    // Count reviews (comments)
-    const { count: reviewsCount, error: reviewsError } = await supabase
-      .from('comments')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-
     // Count commands (messages from v2_messages where role is 'user')
     const { count: commandsCount, error: commandsError } = await supabase
       .from('v2_messages')
@@ -380,14 +329,14 @@ export async function getUserAnalytics(userId: string): Promise<{
       .eq('role', 'user');
 
     return {
-      messageCount: messageCount || 0,
-      totalCost: totalCost || 0,
-      totalTokens: totalTokens || 0,
-      downloadsCount: downloadsCount || 0,
-      starsCount: starsCount || 0,
-      reviewsCount: reviewsCount || 0,
+      messageCount: 0, // Table removed - no longer used
+      totalCost: 0, // Table removed - no longer used
+      totalTokens: 0, // Table removed - no longer used
+      downloadsCount: 0, // Table removed - no longer used
+      starsCount: 0, // Table removed - no longer used
+      reviewsCount: 0, // Table removed - no longer used
       commandsCount: commandsCount || 0,
-      error: monthlyError || downloadsError || starsError || reviewsError || commandsError || null,
+      error: commandsError || null,
     };
   } catch (error) {
     return {

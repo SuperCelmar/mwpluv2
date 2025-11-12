@@ -22,7 +22,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, Calendar, Save, X, Loader2 } from "lucide-react";
 import type { Profile } from "@/lib/supabase";
 import { clearCachedDisplayName, setCachedDisplayName, getDisplayNameFromProfile } from "@/lib/utils/profile-display-name";
-import { setCachedAvatarUrl } from "@/lib/utils/profile-avatar";
+import { setCachedAvatarUrl, getCachedAvatarUrl } from "@/lib/utils/profile-avatar";
+import { getCachedProfile, setCachedProfile, clearCachedProfile } from "@/lib/utils/profile-cache";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -71,11 +72,46 @@ export default function ProfilePage() {
     setUser(authUser);
     // Get last_sign_in_at from auth user
     setLastSignInAt(authUser.last_sign_in_at || null);
-    await loadProfileData(authUser.id);
+    
+    // Check localStorage first for cached profile
+    const cachedProfile = getCachedProfile(authUser.id);
+    if (cachedProfile) {
+      console.log("Profile loaded from cache:", cachedProfile);
+      
+      // Also check if avatar_url is missing but exists in avatar cache
+      let profileToUse = { ...cachedProfile };
+      if (!profileToUse.avatar_url) {
+        const cachedAvatarUrl = getCachedAvatarUrl(authUser.id);
+        if (cachedAvatarUrl) {
+          console.log("Avatar URL found in avatar cache, updating profile cache:", cachedAvatarUrl);
+          profileToUse.avatar_url = cachedAvatarUrl;
+          setCachedProfile(authUser.id, profileToUse);
+        }
+      }
+      
+      setProfile(profileToUse);
+      setFormData({
+        pseudo: profileToUse.pseudo || "",
+        first_name: profileToUse.first_name || "",
+        last_name: profileToUse.last_name || "",
+        full_name: profileToUse.full_name || "",
+        phone: profileToUse.phone || "",
+      });
+      // Still need to load stats and analytics, but show profile immediately
+      setLoading(false);
+      // Fetch fresh data in background to update cache and load stats/analytics
+      loadProfileData(authUser.id, true);
+    } else {
+      // No cache, fetch from database
+      console.log("No cached profile found, fetching from database");
+      await loadProfileData(authUser.id, false);
+    }
   };
 
-  const loadProfileData = async (userId: string) => {
-    setLoading(true);
+  const loadProfileData = async (userId: string, backgroundUpdate: boolean = false) => {
+    if (!backgroundUpdate) {
+      setLoading(true);
+    }
     try {
       const [profileResult, statsResult, analyticsResult] = await Promise.all([
         getUserProfile(userId),
@@ -84,18 +120,57 @@ export default function ProfilePage() {
       ]);
 
       if (profileResult.error) {
-        throw profileResult.error;
+        console.error("Profile fetch error:", profileResult.error);
+        if (!backgroundUpdate) {
+          throw profileResult.error;
+        }
+        return;
       }
 
       if (profileResult.profile) {
-        setProfile(profileResult.profile);
-        setFormData({
-          pseudo: profileResult.profile.pseudo || "",
-          first_name: profileResult.profile.first_name || "",
-          last_name: profileResult.profile.last_name || "",
-          full_name: profileResult.profile.full_name || "",
-          phone: profileResult.profile.phone || "",
-        });
+        console.log("Profile loaded from database:", profileResult.profile);
+        
+        // If avatar_url is null in database, check localStorage cache
+        // This handles the case where avatar was uploaded but database wasn't updated properly
+        let profileToUse = { ...profileResult.profile };
+        if (!profileToUse.avatar_url) {
+          const cachedAvatarUrl = getCachedAvatarUrl(userId);
+          if (cachedAvatarUrl) {
+            console.log("Avatar URL found in cache, using cached value:", cachedAvatarUrl);
+            profileToUse.avatar_url = cachedAvatarUrl;
+            // Try to update database with cached avatar URL
+            // This is a background operation, don't wait for it
+            updateUserProfile(userId, { avatar_url: cachedAvatarUrl }).catch((error) => {
+              console.warn("Failed to sync cached avatar URL to database:", error);
+            });
+          }
+        }
+        
+        // Cache the profile in localStorage (with potentially updated avatar_url)
+        setCachedProfile(userId, profileToUse);
+        
+        // Update state (only if not background update or if profile changed)
+        if (!backgroundUpdate || !profile || profile.id !== profileToUse.id) {
+          setProfile(profileToUse);
+          setFormData({
+            pseudo: profileToUse.pseudo || "",
+            first_name: profileToUse.first_name || "",
+            last_name: profileToUse.last_name || "",
+            full_name: profileToUse.full_name || "",
+            phone: profileToUse.phone || "",
+          });
+        }
+      } else {
+        console.warn("No profile found for user:", userId);
+        // Clear cache if profile doesn't exist
+        clearCachedProfile();
+        if (!backgroundUpdate) {
+          toast({
+            title: "Profil introuvable",
+            description: "Votre profil n'a pas été trouvé. Veuillez contacter le support.",
+            variant: "destructive",
+          });
+        }
       }
 
       if (statsResult.error) {
@@ -125,13 +200,17 @@ export default function ProfilePage() {
 
     } catch (error) {
       console.error("Error loading profile:", error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les données du profil",
-        variant: "destructive",
-      });
+      if (!backgroundUpdate) {
+        toast({
+          title: "Erreur",
+          description: "Impossible de charger les données du profil",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (!backgroundUpdate) {
+        setLoading(false);
+      }
     }
   };
 
@@ -191,6 +270,10 @@ export default function ProfilePage() {
 
       if (updatedProfile) {
         setProfile(updatedProfile);
+        // Update cache with new profile
+        if (user.id) {
+          setCachedProfile(user.id, updatedProfile);
+        }
         // Update cache with new display name (this will notify all components automatically)
         const newDisplayName = getDisplayNameFromProfile(updatedProfile);
         if (user.id) {
@@ -232,9 +315,12 @@ export default function ProfilePage() {
 
   const handleAvatarUpdate = (newAvatarUrl: string) => {
     if (profile && user) {
-      setProfile({ ...profile, avatar_url: newAvatarUrl });
-      // Update localStorage cache
+      const updatedProfile = { ...profile, avatar_url: newAvatarUrl };
+      setProfile(updatedProfile);
+      // Update localStorage cache for avatar
       setCachedAvatarUrl(user.id, newAvatarUrl);
+      // Update full profile cache
+      setCachedProfile(user.id, updatedProfile);
     }
   };
 
@@ -249,8 +335,31 @@ export default function ProfilePage() {
     );
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return null;
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-6 py-8 w-full">
+          <Card>
+            <CardHeader>
+              <CardTitle>Profil introuvable</CardTitle>
+              <CardDescription>
+                Votre profil n'a pas été trouvé dans la base de données.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                Cela peut arriver si votre profil n'a pas été créé automatiquement lors de l'inscription.
+                Veuillez rafraîchir la page ou contacter le support si le problème persiste.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   const accountStatus = getAccountStatus(profile);

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2025-01-13 - Remove Non-Existent Analytics Tables
+
+### Fixed
+- **Analytics Errors**: Fixed `relation "public.user_monthly_usage" does not exist` and `relation "public.chat_events" does not exist` errors by removing queries to non-existent tables
+  - Removed query to `user_monthly_usage` table (no longer exists)
+  - Removed queries to `chat_events` table (no longer exists)
+  - Removed queries to `downloads`, `ratings`, and `comments` tables (no longer used)
+
+### Changed
+- **getUserAnalytics Function** (`lib/supabase/queries-profile.ts`):
+  - Removed all queries to non-existent tables (`user_monthly_usage`, `chat_events`, `downloads`, `ratings`, `comments`)
+  - Now only queries `v2_messages` table for `commandsCount` (still valid)
+  - Returns 0 for all analytics fields except `commandsCount` (tables removed)
+  - Simplified error handling to only include errors from existing table queries
+
+### Technical Details
+- All analytics queries to non-existent tables have been removed
+- Removed fields (`messageCount`, `totalCost`, `totalTokens`, `downloadsCount`, `starsCount`, `reviewsCount`) return 0 to maintain API compatibility
+- Profile page will no longer show errors when loading analytics
+- Only `commandsCount` is now actively queried from `v2_messages` table
+
 ## 2025-01-13 - Real-time Display Name Synchronization Across All Components
 
 ### Added
