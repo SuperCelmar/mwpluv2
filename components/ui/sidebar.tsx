@@ -88,15 +88,9 @@ export const SidebarBody = (props: React.ComponentProps<typeof motion.div>) => {
 export const DesktopSidebar = ({
   className,
   children,
-  onMouseEnter: propOnMouseEnter,
-  onMouseLeave: propOnMouseLeave,
   ...props
 }: React.ComponentProps<typeof motion.div>) => {
   const { open, setOpen, animate } = useSidebar();
-
-  // Use custom handlers if provided, otherwise use default
-  const handleMouseEnter = propOnMouseEnter || (() => setOpen(true));
-  const handleMouseLeave = propOnMouseLeave || (() => setOpen(false));
 
   return (
     <motion.div
@@ -107,8 +101,10 @@ export const DesktopSidebar = ({
       animate={{
         width: animate ? (open ? "300px" : "60px") : "300px",
       }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      transition={{
+        duration: 0.3,
+        ease: "easeInOut",
+      }}
       {...props}
     >
       {children}
@@ -182,22 +178,42 @@ export const SidebarLink = ({
     <Link
       href={link.href}
       className={cn(
-        "flex items-center gap-2 group/sidebar py-2",
-        open ? "justify-start" : "justify-center w-full",
+        "flex items-center gap-2 group/sidebar py-2 relative",
         className
       )}
       {...props}
     >
-      {link.icon}
-      <motion.span
+      <motion.div
+        className={cn(
+          "flex items-center justify-center",
+          open ? "w-auto" : "w-full"
+        )}
         animate={{
-          display: animate ? (open ? "inline-block" : "none") : "inline-block",
-          opacity: animate ? (open ? 1 : 0) : 1,
+          x: 0,
         }}
-        className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0"
+        transition={{
+          duration: 0.3,
+          ease: "easeInOut",
+        }}
       >
-        {link.label}
-      </motion.span>
+        {link.icon}
+      </motion.div>
+      <AnimatePresence>
+        {open && (
+          <motion.span
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: "auto" }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{
+              duration: 0.2,
+              ease: "easeInOut",
+            }}
+            className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0 overflow-hidden"
+          >
+            {link.label}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </Link>
   );
 };
@@ -253,81 +269,98 @@ export const RecentConversations = () => {
 
   const currentConversationId = getCurrentConversationId();
 
-  if (!open) return null;
-
   return (
-    <div className="mt-4 flex flex-col gap-2 overflow-y-auto flex-1">
-      <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 text-neutral-500 dark:text-neutral-400">
-        Récents
-      </h2>
-      <div className="space-y-1">
-        {loading ? (
-          <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
-            Chargement...
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
-            Aucune conversation
-          </div>
-        ) : (
-          conversations.map((conversation) => {
-            const isActive = currentConversationId === conversation.id;
-            const convTitle = conversation.title || 
-              conversation.context_metadata?.initial_address || 
-              'Conversation';
-            const lastActivity = conversation.last_message_at || conversation.created_at;
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{
+            duration: 0.2,
+            ease: "easeInOut",
+          }}
+          className="mt-4 flex flex-col gap-2 overflow-y-auto flex-1"
+        >
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 text-neutral-500 dark:text-neutral-400">
+            Récents
+          </h2>
+          <div className="space-y-1">
+            {loading ? (
+              <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
+                Chargement...
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
+                Aucune conversation
+              </div>
+            ) : (
+              conversations.map((conversation) => {
+                const isActive = currentConversationId === conversation.id;
+                const convTitle = conversation.title || 
+                  conversation.context_metadata?.initial_address || 
+                  'Conversation';
+                const lastActivity = conversation.last_message_at || conversation.created_at;
 
-            return (
-              <button
-                key={conversation.id}
-                onClick={() => handleConversationClick(conversation.id)}
-                className={cn(
-                  "w-full text-left px-3 py-2 rounded-lg transition-all duration-150 text-sm",
-                  isActive 
-                    ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100" 
-                    : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
-                )}
-              >
-                <div className="flex flex-col gap-1">
-                  <p className="font-medium truncate text-xs">
-                    {convTitle}
-                  </p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {formatDistanceToNow(new Date(lastActivity), {
-                      addSuffix: true,
-                      locale: fr,
-                    })}
-                  </p>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
+                return (
+                  <button
+                    key={conversation.id}
+                    onClick={() => handleConversationClick(conversation.id)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-lg transition-all duration-150 text-sm",
+                      isActive 
+                        ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100" 
+                        : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+                    )}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <p className="font-medium truncate text-xs">
+                        {convTitle}
+                      </p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {formatDistanceToNow(new Date(lastActivity), {
+                          addSuffix: true,
+                          locale: fr,
+                        })}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
 // Logo Components
 export const Logo = () => {
-  const { open } = useSidebar();
+  const { open, setOpen } = useSidebar();
   return (
-    <Link
-      href="/"
-      className={cn(
-        "font-normal flex items-center text-sm text-black dark:text-white py-1 relative z-20",
-        open ? "justify-start" : "justify-center w-full"
-      )}
-    >
-      <Image
-        src="/MWPLU.svg"
-        alt="MWPLU"
-        width={120}
-        height={40}
-        className="h-8 w-auto"
-        priority
-      />
-    </Link>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setOpen(false)}
+        className="font-normal flex items-center justify-center text-sm text-black dark:text-white py-1 relative z-20 cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors p-1"
+        aria-label="Close sidebar"
+      >
+        <Menu className="h-5 w-5 text-neutral-700 dark:text-neutral-200" />
+      </button>
+      <Link
+        href="/"
+        className="font-normal flex items-center text-sm text-black dark:text-white py-1 relative z-20"
+      >
+        <Image
+          src="/MWPLU.svg"
+          alt="MWPLU"
+          width={120}
+          height={40}
+          className="h-8 w-auto"
+          priority
+        />
+      </Link>
+    </div>
   );
 };
 
@@ -346,6 +379,21 @@ export const LogoIcon = () => {
         priority
       />
     </Link>
+  );
+};
+
+// Sidebar Toggle Component
+export const SidebarToggle = () => {
+  const { open, setOpen } = useSidebar();
+
+  return (
+    <button
+      onClick={() => setOpen(!open)}
+      className="font-normal flex items-center justify-center text-sm text-black dark:text-white py-1 relative z-20 w-full cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+      aria-label="Toggle sidebar"
+    >
+      <Menu className="h-5 w-5 text-neutral-700 dark:text-neutral-200" />
+    </button>
   );
 };
 
