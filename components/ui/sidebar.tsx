@@ -178,26 +178,14 @@ export const SidebarLink = ({
     <Link
       href={link.href}
       className={cn(
-        "flex items-center gap-2 group/sidebar py-2 relative",
+        "flex items-center gap-2 group/sidebar py-2 relative px-1",
         className
       )}
       {...props}
     >
-      <motion.div
-        className={cn(
-          "flex items-center justify-center",
-          open ? "w-auto" : "w-full"
-        )}
-        animate={{
-          x: 0,
-        }}
-        transition={{
-          duration: 0.3,
-          ease: "easeInOut",
-        }}
-      >
+      <div className="flex items-center justify-start flex-shrink-0 w-5">
         {link.icon}
-      </motion.div>
+      </div>
       <AnimatePresence>
         {open && (
           <motion.span
@@ -349,14 +337,14 @@ export const Logo = () => {
       </button>
       <Link
         href="/"
-        className="font-normal flex items-center text-sm text-black dark:text-white py-1 relative z-20"
+        className="font-normal flex items-center text-sm text-black dark:text-white relative z-20"
       >
         <Image
           src="/MWPLU.svg"
           alt="MWPLU"
           width={120}
           height={40}
-          className="h-8 w-auto"
+          className="h-7 w-auto"
           priority
         />
       </Link>
@@ -375,7 +363,7 @@ export const LogoIcon = () => {
         alt="MWPLU"
         width={40}
         height={40}
-        className="h-8 w-auto"
+        className="h-7 w-auto"
         priority
       />
     </Link>
@@ -389,10 +377,12 @@ export const SidebarToggle = () => {
   return (
     <button
       onClick={() => setOpen(!open)}
-      className="font-normal flex items-center justify-center text-sm text-black dark:text-white py-1 relative z-20 w-full cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+      className="font-normal flex items-center justify-start text-sm text-black dark:text-white py-1 relative z-20 w-full cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors px-1"
       aria-label="Toggle sidebar"
     >
-      <Menu className="h-5 w-5 text-neutral-700 dark:text-neutral-200" />
+      <div className="flex items-center justify-start flex-shrink-0 w-5">
+        <Menu className="h-5 w-5 text-neutral-700 dark:text-neutral-200" />
+      </div>
     </button>
   );
 };

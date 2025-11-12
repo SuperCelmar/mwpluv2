@@ -78,24 +78,15 @@ export function AppSidebar() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={cn(
-                  "w-full flex items-center gap-2 py-2 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors",
-                  open ? "justify-start" : "justify-center"
+                  "w-full flex items-center gap-2 py-2 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors justify-start px-1"
                 )}>
-                  <motion.div
-                    animate={{
-                      x: 0,
-                    }}
-                    transition={{
-                      duration: 0.3,
-                      ease: "easeInOut",
-                    }}
-                  >
+                  <div className="flex items-center justify-start flex-shrink-0 w-5">
                     <Avatar className="h-5 w-5 flex-shrink-0">
                       <AvatarFallback className="text-xs bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200">
                         {user?.email?.charAt(0).toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
-                  </motion.div>
+                  </div>
                   <AnimatePresence>
                     {open && (
                       <motion.span

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2025-01-XX - Sidebar Icon Alignment Fix
+
+### Fixed
+- **Sidebar icon alignment** (`components/ui/sidebar.tsx`): Fixed icon positioning to remain left-aligned during sidebar animations
+  - Replaced animated `motion.div` wrapper with fixed-width container (`w-5`) for icons
+  - Icons now stay in fixed position and don't shift during expand/collapse animations
+  - Added `flex-shrink-0` to prevent icon container from shrinking
+- **Avatar icon alignment** (`components/AppSidebar.tsx`): Fixed user avatar icon to remain left-aligned consistently
+  - Removed conditional `justify-center`/`justify-start` logic
+  - Avatar now always uses `justify-start` with fixed-width container
+  - Ensures consistent left alignment regardless of sidebar state
+
+### Technical Details
+- Icon containers use fixed width (`w-5`) instead of dynamic width based on sidebar state
+- Removed `motion.div` animations from icon containers that caused position shifts
+- Text labels animate independently without affecting icon positions
+
 ## 2025-11-12 - Animated Sidebar Integration
 
 ### Added
@@ -2268,3 +2285,12 @@ Following project guidelines from `project_context.md`:
   - Title sizing/weight adjusted for better hierarchy against body copy
   - Message preview and timestamp spacing balanced for cleaner rhythm
   - Introduced `.conversation-card-meta` flex helper for timestamp row alignment
+
+## 2025-11-12
+
+### Added
+- **Sidebar Toggle Alignment Test**: Created `__tests__/components/sidebar-toggle.test.tsx` to lock the toggle button layout on the sidebar.
+
+### Fixed
+- **Sidebar Toggle Layout**: Updated `components/ui/sidebar.tsx` so the collapsed toggle button uses left alignment and consistent padding/icon wrapper, matching other sidebar controls.
+
