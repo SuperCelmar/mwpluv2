@@ -21,6 +21,7 @@ import { useEffect, useLayoutEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getSidebarState } from "@/lib/utils/sidebar-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDisplayName } from "@/hooks/useDisplayName";
 
 export function AppSidebar() {
   const router = useRouter();
@@ -33,6 +34,7 @@ export function AppSidebar() {
   const [hasRestoredState, setHasRestoredState] = useState(false);
   const isRestoringRef = useRef(true);
   const initialOpenStateRef = useRef<boolean | null>(null);
+  const { displayName, loading: displayNameLoading } = useDisplayName(user?.id || null);
 
   // Load sidebar state from localStorage synchronously before first paint
   // This prevents animation when restoring state on refresh
@@ -199,14 +201,18 @@ export function AppSidebar() {
                             }}
                             className="text-sm font-medium truncate overflow-hidden"
                           >
-                            {user?.email?.split('@')[0] || 'Utilisateur'}
+                            {displayNameLoading
+                              ? '...'
+                              : displayName || user?.email?.split('@')[0] || 'Utilisateur'}
                           </motion.span>
                         )}
                       </AnimatePresence>
                     ) : (
                       open && (
                         <span className="text-sm font-medium truncate overflow-hidden">
-                          {user?.email?.split('@')[0] || 'Utilisateur'}
+                          {displayNameLoading
+                            ? '...'
+                            : displayName || user?.email?.split('@')[0] || 'Utilisateur'}
                         </span>
                       )
                     )}

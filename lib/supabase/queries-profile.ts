@@ -38,10 +38,18 @@ export async function updateUserProfile(
   updates: Partial<Pick<Profile, 'first_name' | 'last_name' | 'full_name' | 'phone' | 'pseudo' | 'avatar_url'>>
 ): Promise<{ profile: Profile | null; error: Error | null }> {
   try {
+    // Filter out full_name since it's a generated column and cannot be updated directly
+    const { full_name, ...updateFields } = updates;
+    
+    // Only proceed if there are fields to update
+    if (Object.keys(updateFields).length === 0) {
+      return { profile: null, error: new Error('No fields to update') };
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .update({
-        ...updates,
+        ...updateFields,
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId)
@@ -49,14 +57,17 @@ export async function updateUserProfile(
       .single();
 
     if (error) {
-      return { profile: null, error };
+      // Return a more descriptive error
+      const errorMessage = error.message || error.details || 'Unknown database error';
+      return { profile: null, error: new Error(errorMessage) };
     }
 
     return { profile: data, error: null };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       profile: null,
-      error: error instanceof Error ? error : new Error('Unknown error'),
+      error: new Error(errorMessage),
     };
   }
 }

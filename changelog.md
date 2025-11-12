@@ -1,5 +1,38 @@
 # Changelog
 
+## 2025-01-07 - Add Cached Display Name in Sidebar
+
+### Added
+- **Display Name Utility** (`lib/utils/profile-display-name.ts`):
+  - Created utility functions to get, set, and clear cached display name in localStorage
+  - Cache duration: 24 hours
+  - `getDisplayNameFromProfile()`: Returns pseudo if available, otherwise full_name
+  - `getCachedDisplayName()`: Retrieves cached display name from localStorage
+  - `setCachedDisplayName()`: Caches display name in localStorage
+  - `clearCachedDisplayName()`: Clears cached display name
+
+- **Display Name Hook** (`hooks/useDisplayName.ts`):
+  - Created `useDisplayName` hook to fetch and cache user display name
+  - Automatically checks cache first before querying database
+  - Returns display name, loading state, and refresh function
+
+### Changed
+- **AppSidebar** (`components/AppSidebar.tsx`):
+  - Now displays cached display name (pseudo or full_name) instead of email username
+  - Falls back to email username if display name is not available
+  - Uses `useDisplayName` hook to fetch and cache the display name
+  - Shows loading indicator ("...") while fetching display name
+
+- **Profile Page** (`app/(app)/profile/page.tsx`):
+  - Invalidates and updates display name cache when profile is updated
+  - Ensures sidebar display name updates immediately after profile changes
+
+### Benefits
+- Reduces database calls by caching display name in localStorage
+- Improves performance by avoiding repeated profile queries
+- Display name updates automatically when profile changes
+- Cache expires after 24 hours to ensure fresh data
+
 ## 2025-12-06 - Remove user_settings Table and Related Functionality
 
 ### Removed
@@ -2762,3 +2795,25 @@ Following project guidelines from `project_context.md`:
 ### Fixed
 - **Sidebar Toggle Layout**: Updated `components/ui/sidebar.tsx` so the collapsed toggle button uses left alignment and consistent padding/icon wrapper, matching other sidebar controls.
 
+
+## 2025-01-07
+
+### Fixed
+- **Profile Avatar Upload**: Fixed avatar upload functionality in `components/profile/ProfileAvatar.tsx`
+  - Fixed file path issue: removed double `avatars/` prefix (bucket name was already 'avatars')
+  - Added cleanup logic to delete old avatar files when uploading new ones
+  - Improved error handling with better error messages and cleanup on failure
+  - Now uses `updateUserProfile` function for consistency with profile updates
+
+### Added
+- **Storage RLS Policies**: Created migration `20250107000001_setup_avatars_storage.sql`
+  - Added RLS policies for avatars storage bucket
+  - Users can only upload/update/delete their own avatars (files starting with their user ID)
+  - Public read access for avatar images
+  - Note: The 'avatars' bucket must be created manually in Supabase Dashboard (Storage > Buckets > New Bucket)
+
+- **Profiles RLS Policies**: Created migration `20250107000002_add_profiles_rls_policies.sql`
+  - Added RLS policies for profiles table
+  - Users can view and update their own profiles
+  - Admins can view and update all profiles
+  - Users can create their own profile records

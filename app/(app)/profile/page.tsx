@@ -21,6 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, Calendar, Save, X, Loader2 } from "lucide-react";
 import type { Profile } from "@/lib/supabase";
+import { clearCachedDisplayName, setCachedDisplayName, getDisplayNameFromProfile } from "@/lib/utils/profile-display-name";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -138,14 +139,45 @@ export default function ProfilePage() {
 
     setSaving(true);
     try {
-      // Update profile
-      const profileUpdates: any = {
-        pseudo: formData.pseudo || null,
-        first_name: formData.first_name || null,
-        last_name: formData.last_name || null,
-        full_name: formData.full_name || null,
-        phone: formData.phone || null,
-      };
+      // Compare current formData with original profile to only update changed fields
+      const profileUpdates: any = {};
+      
+      // Normalize values for comparison (empty string becomes null)
+      const normalizeValue = (val: string | null | undefined) => val || null;
+      const currentPseudo = normalizeValue(formData.pseudo);
+      const currentFirstName = normalizeValue(formData.first_name);
+      const currentLastName = normalizeValue(formData.last_name);
+      const currentPhone = normalizeValue(formData.phone);
+      
+      const originalPseudo = normalizeValue(profile.pseudo);
+      const originalFirstName = normalizeValue(profile.first_name);
+      const originalLastName = normalizeValue(profile.last_name);
+      const originalPhone = normalizeValue(profile.phone);
+      
+      // Only include fields that have changed
+      if (currentPseudo !== originalPseudo) {
+        profileUpdates.pseudo = currentPseudo;
+      }
+      if (currentFirstName !== originalFirstName) {
+        profileUpdates.first_name = currentFirstName;
+      }
+      if (currentLastName !== originalLastName) {
+        profileUpdates.last_name = currentLastName;
+      }
+      if (currentPhone !== originalPhone) {
+        profileUpdates.phone = currentPhone;
+      }
+      
+      // If no changes, show message and return early
+      if (Object.keys(profileUpdates).length === 0) {
+        setEditing(false);
+        toast({
+          title: "Aucune modification",
+          description: "Aucun changement détecté",
+        });
+        setSaving(false);
+        return;
+      }
 
       const { profile: updatedProfile, error: profileError } = await updateUserProfile(
         user.id,
@@ -156,18 +188,27 @@ export default function ProfilePage() {
         throw profileError;
       }
 
-      if (updatedProfile) setProfile(updatedProfile);
+      if (updatedProfile) {
+        setProfile(updatedProfile);
+        // Invalidate and update cache with new display name
+        clearCachedDisplayName();
+        const newDisplayName = getDisplayNameFromProfile(updatedProfile);
+        if (newDisplayName && user.id) {
+          setCachedDisplayName(user.id, newDisplayName);
+        }
+      }
 
       setEditing(false);
       toast({
         title: "Succès",
         description: "Profil mis à jour avec succès",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving profile:", error);
+      const errorMessage = error?.message || error?.details || "Impossible de sauvegarder les modifications";
       toast({
         title: "Erreur",
-        description: "Impossible de sauvegarder les modifications",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

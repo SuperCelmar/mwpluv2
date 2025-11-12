@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Camera, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { updateUserProfile } from '@/lib/supabase/queries-profile';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -69,7 +70,23 @@ export function ProfileAvatar({
       // Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${userId}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      // File path should not include bucket name prefix since we're already in the 'avatars' bucket
+      const filePath = fileName;
+
+      // Delete old avatar if it exists
+      if (avatarUrl) {
+        try {
+          // Extract filename from URL (handle both storage URLs and data URLs)
+          const oldUrl = new URL(avatarUrl);
+          const oldPath = oldUrl.pathname.split('/').pop();
+          if (oldPath && oldPath.startsWith(userId)) {
+            await supabase.storage.from('avatars').remove([oldPath]);
+          }
+        } catch (error) {
+          // Ignore errors when deleting old avatar (might not exist or be in different format)
+          console.warn('Could not delete old avatar:', error);
+        }
+      }
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -79,12 +96,10 @@ export function ProfileAvatar({
         });
 
       if (uploadError) {
-        // If bucket doesn't exist, create a public URL from the file data
-        // For now, we'll use a data URL approach or skip storage
         console.error('Upload error:', uploadError);
         toast({
           title: 'Erreur',
-          description: 'Impossible de télécharger l\'image. Veuillez réessayer.',
+          description: uploadError.message || 'Impossible de télécharger l\'image. Veuillez réessayer.',
           variant: 'destructive',
         });
         setUploading(false);
@@ -95,13 +110,19 @@ export function ProfileAvatar({
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
 
-      // Update profile
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('id', userId);
+      // Update profile using the updateUserProfile function for consistency
+      const { profile: updatedProfile, error: updateError } = await updateUserProfile(
+        userId,
+        { avatar_url: publicUrl }
+      );
 
       if (updateError) {
+        // If profile update fails, try to clean up the uploaded file
+        try {
+          await supabase.storage.from('avatars').remove([filePath]);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup uploaded file:', cleanupError);
+        }
         throw updateError;
       }
 
