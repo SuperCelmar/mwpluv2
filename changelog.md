@@ -1,5 +1,150 @@
 # Changelog
 
+## 2025-01-XX - Add Search Functionality to Chats Page
+
+### Added
+- **Search bar** (`app/(app)/chats/page.tsx`): Added search functionality to the chats page
+  - Search input field in the header with search icon and clear button
+  - Searches across conversation titles, addresses (from context_metadata), and message content
+  - Real-time search with 300ms debounce for performance
+  - Results are filtered and sorted by last_message_at
+  - Empty state message adapts based on whether search is active
+  - Clear button (X) appears when search query is entered
+
+### Technical Details
+- Search implementation:
+  - Client-side filtering for conversation titles and addresses (from loaded conversations)
+  - Database query for message content using PostgreSQL ILIKE for case-insensitive pattern matching
+  - Results are deduplicated and sorted by last activity time
+- State management:
+  - `allConversations`: Stores all loaded conversations (for client-side filtering)
+  - `conversations`: Stores filtered/search results
+  - `searchQuery`: Tracks current search input
+- Search covers:
+  1. Conversation title (`v2_conversations.title`)
+  2. Initial address (`v2_conversations.context_metadata->>'initial_address'`)
+  3. Message content (`v2_messages.message`)
+
+## 2025-01-XX - Fix Sidebar Skeleton States for Open/Closed States
+
+### Fixed
+- **Sidebar skeleton for open state** (`components/AppSidebar.tsx`): Added skeleton UI when sidebar is open during page load/refresh
+  - Sidebar now shows skeleton with logo, navigation links, and user dropdown placeholders when open during loading
+  - Prevents sidebar from appearing closed and then reopening on refresh
+  - Skeleton matches the open sidebar layout (logo + 3 navigation items + recent conversations section)
+- **Hydration error** (`components/ui/sidebar.tsx`, `components/AppSidebar.tsx`): Fixed React hydration mismatch error
+  - Added `suppressHydrationWarning` to `DesktopSidebar` motion.div to handle intentional width differences between server and client
+  - Sidebar state always initializes as `false` to match server-side rendering
+  - State is restored from localStorage in `useLayoutEffect` which runs synchronously before paint
+  - Skeleton only shows on client (`typeof window !== 'undefined'`) to prevent server/client content mismatch
+  - Prevents hydration errors while maintaining correct sidebar state restoration
+
+### Added
+- **Sidebar state utility** (`lib/utils/sidebar-state.ts`): New utility function to read sidebar state from localStorage synchronously
+  - `getSidebarState()`: Returns boolean indicating if sidebar should be open
+  - Handles server-side rendering gracefully (returns `false` on server)
+  - Used for reference but actual state restoration happens in `useLayoutEffect`
+
+### Technical Details
+- Sidebar skeleton shows when `open && (isLoading || isInitialRestore) && typeof window !== 'undefined'` 
+  - `isLoading = !mounted || !hasRestoredState`
+  - `isInitialRestore = initialOpenStateRef.current !== null && !hasRestoredState`
+  - This ensures skeleton shows during the brief window when `open` is `true` but `hasRestoredState` is still `false`
+- Skeleton includes: logo area, 3 navigation link placeholders, recent conversations section placeholder, and user dropdown placeholder
+- State always initializes as `false` to match server, then `useLayoutEffect` restores from localStorage synchronously before paint
+- `setHasRestoredState(true)` is delayed using `requestAnimationFrame` to ensure React renders with `open=true` and `hasRestoredState=false` first, allowing skeleton to display
+- `suppressHydrationWarning` on DesktopSidebar handles intentional width differences (server: 60px, client: may be 300px)
+- `initialOpenStateRef` tracks the initial state from localStorage to help determine if we're in the restoration phase
+- This ensures no hydration errors while maintaining correct sidebar state and skeleton display
+
+## 2025-01-XX - Fix Sidebar State Persistence and Hydration Issues
+
+### Fixed
+- **Hydration error** (`components/AppSidebar.tsx`): Fixed React hydration mismatch error
+  - Sidebar state now always starts as `false` on both server and client to match SSR
+  - State is loaded from localStorage only after hydration completes in `useEffect`
+  - Prevents server/client HTML mismatch that caused hydration errors
+- **Sidebar state persistence** (`components/AppSidebar.tsx`): Fixed sidebar collapsing and unwanted animations on page refresh
+  - Added localStorage persistence for sidebar open/closed state
+  - State is loaded from localStorage after hydration (not synchronously)
+  - Sidebar state is saved to localStorage whenever it changes (after hydration)
+  - Uses `isHydrated` flag to control when animations are enabled
+- **Animation control** (`components/ui/sidebar.tsx`): Prevented unwanted animations on page refresh
+  - `SidebarLink` components now respect `animate` flag - no animation when sidebar is already open on refresh
+  - `RecentConversations` component respects `animate` flag - renders immediately without animation when sidebar is already open
+  - `DesktopSidebar` sets transition duration to 0 when `animate` is false
+  - Avatar username text respects `isHydrated` flag to prevent animation on initial render
+- **Logo component** (`components/ui/sidebar.tsx`): Fixed logo re-animation on refresh
+  - Logo now defaults to light mode for SSR consistency
+  - Only switches to dark mode after client-side hydration completes
+  - Prevents logo from animating/re-rendering unnecessarily
+
+### Technical Details
+- Sidebar state is persisted in localStorage with key `sidebar-open`
+- State always initializes as `false` to match server-side rendering
+- `isHydrated` flag tracks when client-side hydration is complete
+- `animate={isHydrated}` prop enables animations only after hydration
+- All animated components (SidebarLink, RecentConversations, Avatar text) check `animate` flag before animating
+- Logo uses `mounted` state to prevent hydration mismatch with theme detection
+
+## 2025-01-XX - Move Sidebar to Route Group Layout
+
+### Changed
+- **Route structure**: Refactored to use Next.js route groups for better performance
+  - Created `app/(app)/layout.tsx` with shared `AppSidebar` component
+  - Moved all authenticated pages into `app/(app)/` route group:
+    - `app/page.tsx` → `app/(app)/page.tsx`
+    - `app/chats/page.tsx` → `app/(app)/chats/page.tsx`
+    - `app/projects/page.tsx` → `app/(app)/projects/page.tsx`
+    - `app/project/[id]/page.tsx` → `app/(app)/project/[id]/page.tsx`
+    - `app/chat/[conversation_id]/page.tsx` → `app/(app)/chat/[conversation_id]/page.tsx`
+    - `app/profile/page.tsx` → `app/(app)/profile/page.tsx`
+    - `app/settings/page.tsx` → `app/(app)/settings/page.tsx`
+  - Moved `app/chat/[conversation_id]/useEnrichment.ts` → `app/(app)/chat/[conversation_id]/useEnrichment.ts`
+- **Sidebar optimization**: `AppSidebar` now renders once at the root layout level instead of re-rendering on every page navigation
+  - Removed `AppSidebar` import and usage from all individual pages
+  - Removed outer flex container wrappers from pages (now handled by layout)
+  - Sidebar persists across navigation without re-mounting
+
+### Technical Details
+- Route groups use parentheses `(app)` to organize routes without affecting URL structure
+- The layout in `app/(app)/layout.tsx` wraps all authenticated pages with sidebar and flex layout
+- Public pages (login/signup) remain outside the route group and don't have sidebar
+- This improves performance by preventing sidebar re-renders on navigation
+
+## 2025-01-XX - Page Cleanup and Project Page Redesign
+
+### Removed
+- **Dashboard page** (`app/dashboard/page.tsx`): Removed duplicate dashboard page, consolidated to `/projects`
+- **PLU page** (`app/plu/page.tsx`): Removed legacy PLU chat interface
+- **PLU components** (`components/plu/`): Removed unused PLU-specific components (LeftSidebar, RightPanel, ChatArea, ChatInput, ChatMessage, ContextBadge, EmptyState)
+- **Test pages**: Removed all test pages:
+  - `app/test-breadcrumb/page.tsx`
+  - `app/test-cache/page.tsx`
+  - `app/test-enrichment/page.tsx`
+  - `app/test-progressive/page.tsx`
+  - `app/test-skeletons/page.tsx`
+
+### Changed
+- **Route consolidation**: All `/dashboard` redirects updated to `/projects`
+  - Updated `app/project/[id]/page.tsx` redirects
+- **ProjectCard component** (`components/ProjectCard.tsx`): Updated navigation to go to `/project/[id]` instead of `/chat/[conversation_id]`
+- **Project page** (`app/project/[id]/page.tsx`): Complete redesign
+  - Now fetches and displays project information (name, type, status, address)
+  - Lists all conversations belonging to the project
+  - Shows conversation titles, message counts, and last activity
+  - Includes AddressInput component to create new conversations directly within the project
+  - New conversations are automatically linked to the project (bypasses address checking)
+  - Clicking a conversation navigates to `/chat/[conversation_id]`
+  - Uses AppSidebar for consistent navigation
+  - Responsive layout with proper loading states
+
+### Technical Details
+- Project page queries `v2_projects` and `v2_conversations` filtered by `project_id`
+- Conversations created from project page are directly linked via `project_id` parameter
+- Address input bypasses duplicate checking when creating conversations within a project context
+- All conversations display with metadata (address, message count, last activity)
+
 ## 2025-11-12 - Fixed Logo Missing on Chat Conversation Page Sidebar
 
 ### Fixed

@@ -93,19 +93,40 @@ export const DesktopSidebar = ({
 }: React.ComponentProps<typeof motion.div>) => {
   const { open, setOpen, animate } = useSidebar();
 
+  // When animations are disabled, use inline style to set width directly
+  // This prevents framer-motion from animating when state changes
+  const width = open ? "300px" : "60px";
+
   return (
     <motion.div
       className={cn(
-        "h-full px-4 py-4 hidden md:flex md:flex-col bg-neutral-100 dark:bg-neutral-800 w-[300px] flex-shrink-0",
+        "h-full px-4 py-4 hidden md:flex md:flex-col bg-neutral-100 dark:bg-neutral-800 flex-shrink-0",
         className
       )}
-      animate={{
-        width: animate ? (open ? "300px" : "60px") : "300px",
+      initial={false}
+      suppressHydrationWarning
+      style={{
+        // When animations are disabled, set width via style
+        // When animations are enabled, keep style to ensure framer-motion reads correct initial value
+        width: animate ? width : width,
       }}
-      transition={{
-        duration: 0.3,
-        ease: "easeInOut",
-      }}
+      animate={
+        animate
+          ? {
+              width,
+            }
+          : false
+      }
+      transition={
+        animate
+          ? {
+              duration: 0.3,
+              ease: "easeInOut",
+            }
+          : {
+              duration: 0,
+            }
+      }
       {...props}
     >
       {children}
@@ -187,29 +208,37 @@ export const SidebarLink = ({
       <div className="flex items-center justify-start flex-shrink-0 w-5">
         {link.icon}
       </div>
-      <AnimatePresence>
-        {open && (
-          <motion.span
-            initial={{ opacity: 0, width: 0 }}
-            animate={{ opacity: 1, width: "auto" }}
-            exit={{ opacity: 0, width: 0 }}
-            transition={{
-              duration: 0.2,
-              ease: "easeInOut",
-            }}
-            className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0 overflow-hidden"
-          >
+      {animate ? (
+        <AnimatePresence>
+          {open && (
+            <motion.span
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: "auto" }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{
+                duration: 0.2,
+                ease: "easeInOut",
+              }}
+              className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0 overflow-hidden"
+            >
+              {link.label}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      ) : (
+        open && (
+          <span className="text-neutral-700 dark:text-neutral-200 text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre inline-block !p-0 !m-0 overflow-hidden">
             {link.label}
-          </motion.span>
-        )}
-      </AnimatePresence>
+          </span>
+        )
+      )}
     </Link>
   );
 };
 
 // Recent Conversations Component
-export const RecentConversations = () => {
-  const { open } = useSidebar();
+export const RecentConversations = (): React.ReactElement | null => {
+  const { open, animate } = useSidebar();
   const [conversations, setConversations] = useState<V2Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -258,69 +287,76 @@ export const RecentConversations = () => {
 
   const currentConversationId = getCurrentConversationId();
 
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{
-            duration: 0.2,
-            ease: "easeInOut",
-          }}
-          className="mt-4 flex flex-col gap-2 overflow-y-auto flex-1"
-        >
-          <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 text-neutral-500 dark:text-neutral-400">
-            Récents
-          </h2>
-          <div className="space-y-1">
-            {loading ? (
-              <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
-                Chargement...
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
-                Aucune conversation
-              </div>
-            ) : (
-              conversations.map((conversation) => {
-                const isActive = currentConversationId === conversation.id;
-                const convTitle = conversation.title || 
-                  conversation.context_metadata?.initial_address || 
-                  'Conversation';
-                const lastActivity = conversation.last_message_at || conversation.created_at;
-
-                return (
-                  <button
-                    key={conversation.id}
-                    onClick={() => handleConversationClick(conversation.id)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-lg transition-all duration-150 text-sm",
-                      isActive 
-                        ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100" 
-                        : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
-                    )}
-                  >
-                    <div className="flex flex-col gap-1">
-                      <p className="font-medium truncate text-xs">
-                        {convTitle}
-                      </p>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {formatDistanceToNow(new Date(lastActivity), {
-                          addSuffix: true,
-                          locale: fr,
-                        })}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })
-            )}
+  const content = (
+    <div className="mt-4 flex flex-col gap-2 overflow-y-auto flex-1">
+      <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 text-neutral-500 dark:text-neutral-400">
+        Récents
+      </h2>
+      <div className="space-y-1">
+        {loading ? (
+          <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
+            Chargement...
           </div>
-        </motion.div>
-      )}
+        ) : conversations.length === 0 ? (
+          <div className="text-sm text-center py-4 text-neutral-500 dark:text-neutral-400">
+            Aucune conversation
+          </div>
+        ) : (
+          conversations.map((conversation) => {
+            const isActive = currentConversationId === conversation.id;
+            const convTitle = conversation.title || 
+              conversation.context_metadata?.initial_address || 
+              'Conversation';
+            const lastActivity = conversation.last_message_at || conversation.created_at;
+
+            return (
+              <button
+                key={conversation.id}
+                onClick={() => handleConversationClick(conversation.id)}
+                className={cn(
+                  "w-full text-left px-3 py-2 rounded-lg transition-all duration-150 text-sm",
+                  isActive 
+                    ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100" 
+                    : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+                )}
+              >
+                <div className="flex flex-col gap-1">
+                  <p className="font-medium truncate text-xs">
+                    {convTitle}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {formatDistanceToNow(new Date(lastActivity), {
+                      addSuffix: true,
+                      locale: fr,
+                    })}
+                  </p>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  if (!open) return null;
+
+  return animate ? (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{
+          duration: 0.2,
+          ease: "easeInOut",
+        }}
+      >
+        {content}
+      </motion.div>
     </AnimatePresence>
+  ) : (
+    content
   );
 };
 
@@ -334,7 +370,8 @@ export const Logo = () => {
     setMounted(true);
   }, []);
 
-  const isDarkMode = mounted && resolvedTheme === 'dark';
+  // Use resolvedTheme directly, default to light for SSR consistency
+  const isDarkMode = mounted ? resolvedTheme === 'dark' : false;
 
   return (
     <div className="flex items-center gap-2">

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, FolderOpen } from 'lucide-react';
-import { AppSidebar } from '@/components/AppSidebar';
 import { ProjectCard } from '@/components/ProjectCard';
 import { NewConversationModal } from '@/components/NewConversationModal';
 import { Button } from '@/components/ui/button';
@@ -82,19 +81,16 @@ export default function ProjectsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-neutral-900">
-        <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="max-w-7xl mx-auto px-6 py-8 w-full">
-            <div className="flex items-center justify-between mb-8">
-              <Skeleton className="h-10 w-48" />
-              <Skeleton className="h-10 w-40" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-48 w-full" />
-              ))}
-            </div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-6 py-8 w-full">
+          <div className="flex items-center justify-between mb-8">
+            <Skeleton className="h-10 w-48" />
+            <Skeleton className="h-10 w-40" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-48 w-full" />
+            ))}
           </div>
         </div>
       </div>
@@ -102,8 +98,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-neutral-900">
-      <AppSidebar />
+    <>
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-6 py-8 w-full">
           <div className="flex items-center justify-between mb-8">
@@ -141,7 +136,7 @@ export default function ProjectsPage() {
         </div>
       </div>
       <NewConversationModal open={showNewModal} onOpenChange={handleCloseModal} />
-    </div>
+    </>
   );
 }
 

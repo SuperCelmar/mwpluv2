@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
-import { AppSidebar } from '@/components/AppSidebar';
 import { AddressSuggestion, searchAddress } from '@/lib/address-api';
 import { createLightweightConversation } from '@/lib/supabase/queries';
 import { toast } from '@/hooks/use-toast';
@@ -137,7 +136,7 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-full">
         <div className="text-gray-500">Chargement...</div>
       </div>
     );
@@ -173,22 +172,20 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-neutral-900">
-      <AppSidebar />
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl">
-          <PromptInputBox
-            onSend={handleSend}
-            isLoading={sendingMessage}
-            placeholder="Entrez l'adresse de votre projet..."
-            enableAddressAutocomplete={true}
-            onAddressSelect={handleAddressSelect}
-            addressSuggestions={addressSuggestions}
-            showAddressSuggestions={showAddressSuggestions}
-            onAddressInputChange={handleAddressInputChange}
-          />
-        </div>
+    <div className="flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl">
+        <PromptInputBox
+          onSend={handleSend}
+          isLoading={sendingMessage}
+          placeholder="Entrez l'adresse de votre projet..."
+          enableAddressAutocomplete={true}
+          onAddressSelect={handleAddressSelect}
+          addressSuggestions={addressSuggestions}
+          showAddressSuggestions={showAddressSuggestions}
+          onAddressInputChange={handleAddressInputChange}
+        />
       </div>
     </div>
   );
 }
+

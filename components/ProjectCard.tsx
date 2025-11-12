@@ -30,9 +30,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
   const lastActivity = mostRecentConversation?.last_message_at || mostRecentConversation?.created_at || project.updated_at;
 
   const handleClick = () => {
-    if (mostRecentConversation) {
-      router.push(`/chat/${mostRecentConversation.id}`);
-    }
+    router.push(`/project/${project.id}`);
   };
 
   const getStatusBadgeVariant = (status: string) => {
