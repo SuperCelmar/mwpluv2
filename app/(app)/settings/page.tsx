@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsSection";
-import { SessionsList } from "@/components/settings/SessionsList";
 import { LoginHistoryTable } from "@/components/settings/LoginHistoryTable";
 import { DeleteAccountDialog } from "@/components/settings/DeleteAccountDialog";
 import { DataExportDialog } from "@/components/settings/DataExportDialog";
@@ -239,8 +238,6 @@ export default function SettingsPage() {
                     <Switch disabled />
                   </SettingsRow>
                 </SettingsSection>
-
-                <SessionsList />
 
                 <LoginHistoryTable />
 

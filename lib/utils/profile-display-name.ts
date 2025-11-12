@@ -6,6 +6,30 @@
 const DISPLAY_NAME_CACHE_KEY = 'user_display_name';
 const DISPLAY_NAME_CACHE_TIMESTAMP_KEY = 'user_display_name_timestamp';
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DISPLAY_NAME_CHANGED_EVENT = 'displayNameChanged';
+
+/**
+ * Dispatch a custom event to notify all components that display name has changed
+ */
+function dispatchDisplayNameChanged(userId: string, displayName: string): void {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const event = new CustomEvent(DISPLAY_NAME_CHANGED_EVENT, {
+      detail: { userId, displayName },
+    });
+    window.dispatchEvent(event);
+  } catch (error) {
+    console.error('Error dispatching display name changed event:', error);
+  }
+}
+
+/**
+ * Get the event name for display name changes (for use in event listeners)
+ */
+export function getDisplayNameChangedEventName(): string {
+  return DISPLAY_NAME_CHANGED_EVENT;
+}
 
 export interface CachedDisplayName {
   displayName: string;
@@ -47,7 +71,7 @@ export function getCachedDisplayName(userId: string): string | null {
 }
 
 /**
- * Cache display name in localStorage
+ * Cache display name in localStorage and notify all components
  */
 export function setCachedDisplayName(userId: string, displayName: string): void {
   if (typeof window === 'undefined') return;
@@ -61,13 +85,16 @@ export function setCachedDisplayName(userId: string, displayName: string): void 
 
     localStorage.setItem(DISPLAY_NAME_CACHE_KEY, JSON.stringify(cachedData));
     localStorage.setItem(DISPLAY_NAME_CACHE_TIMESTAMP_KEY, Date.now().toString());
+    
+    // Notify all components that display name has changed
+    dispatchDisplayNameChanged(userId, displayName);
   } catch (error) {
     console.error('Error caching display name:', error);
   }
 }
 
 /**
- * Clear cached display name from localStorage
+ * Clear cached display name from localStorage and notify all components
  */
 export function clearCachedDisplayName(): void {
   if (typeof window === 'undefined') return;
@@ -75,6 +102,12 @@ export function clearCachedDisplayName(): void {
   try {
     localStorage.removeItem(DISPLAY_NAME_CACHE_KEY);
     localStorage.removeItem(DISPLAY_NAME_CACHE_TIMESTAMP_KEY);
+    
+    // Notify all components that display name cache was cleared
+    const event = new CustomEvent(DISPLAY_NAME_CHANGED_EVENT, {
+      detail: { userId: null, displayName: null },
+    });
+    window.dispatchEvent(event);
   } catch (error) {
     console.error('Error clearing cached display name:', error);
   }

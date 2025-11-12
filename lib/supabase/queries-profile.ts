@@ -218,47 +218,6 @@ export async function logLoginAttempt(
 }
 
 /**
- * Get active sessions from Supabase Auth
- */
-export async function getActiveSessions(): Promise<{
-  sessions: Array<{
-    id: string;
-    user_id: string;
-    created_at: string;
-    updated_at: string;
-    factor_id: string | null;
-    aal: string | null;
-    not_after: string | null;
-  }>;
-  error: Error | null;
-}> {
-  try {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      return { sessions: [], error: sessionError };
-    }
-
-    // Get all sessions for the user
-    const { data: { sessions }, error: sessionsError } = await supabase.auth.getSessions();
-
-    if (sessionsError) {
-      return { sessions: [], error: sessionsError };
-    }
-
-    return {
-      sessions: sessions || [],
-      error: null,
-    };
-  } catch (error) {
-    return {
-      sessions: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
-  }
-}
-
-/**
  * Export user data as JSON
  */
 export async function exportUserData(userId: string): Promise<{

@@ -1,5 +1,106 @@
 # Changelog
 
+## 2025-01-13 - Real-time Display Name Synchronization Across All Components
+
+### Added
+- **Event-Based Display Name Updates**: Implemented custom event system to notify all components when user pseudo/display name changes
+  - Created `dispatchDisplayNameChanged()` function in `lib/utils/profile-display-name.ts` to broadcast changes
+  - Added `getDisplayNameChangedEventName()` export for event listener registration
+  - Events are dispatched automatically when cache is updated or cleared
+
+### Improved
+- **useDisplayName Hook** (`hooks/useDisplayName.ts`): Now listens for display name change events and updates immediately
+  - Added event listener that refreshes display name when cache changes
+  - Components using this hook (like sidebar) now update instantly when pseudo is modified
+  - Handles both cache updates (immediate) and cache clears (refresh from DB)
+- **Profile Page** (`app/(app)/profile/page.tsx`): Optimized cache update flow
+  - Removed unnecessary cache clearing before setting new value
+  - Now directly updates cache, which automatically notifies all components via event system
+  - Display name updates propagate immediately to sidebar and all other components
+
+### Technical Details
+- Custom events are dispatched via `window.dispatchEvent()` when display name cache changes
+- All components using `useDisplayName` hook automatically listen for these events
+- Sidebar profile display now updates instantly when pseudo is modified in profile page
+- Works for pseudo, first_name, and last_name changes (since full_name is used as fallback)
+- No page refresh or manual cache clearing required
+
+### Impact
+- Sidebar profile name updates immediately when pseudo is changed
+- All components displaying user display name stay synchronized automatically
+- Better user experience with instant visual feedback when profile is updated
+
+## 2025-11-12 - Remove Supabase Sessions Section
+
+### Removed
+- **Settings Page** (`app/(app)/settings/page.tsx`): Eliminated the “Sessions actives” card from the Compte tab to drop the unused Supabase session management UI.
+- **SessionsList Component** (`components/settings/SessionsList.tsx`): Deleted the dedicated active sessions component and related UI dependencies.
+- **Supabase Query** (`lib/supabase/queries-profile.ts`): Removed `getActiveSessions()` helper that proxied Supabase Auth session fetches.
+
+### Changed
+- **Tests** (`__tests__/components/settings-page.test.tsx`): Added coverage to ensure the settings screen no longer renders the “Sessions actives” section.
+
+## 2025-01-13 - Profile Avatar Synchronization and Caching
+
+### Added
+- **Avatar URL Caching**: Implemented localStorage caching for profile avatar URLs to improve performance and enable instant updates across the app
+  - Created `lib/utils/profile-avatar.ts` with `getCachedAvatarUrl()`, `setCachedAvatarUrl()`, and `clearCachedAvatarUrl()` functions
+  - Cache duration: 24 hours (same as display name cache)
+  - Cache key: `user_avatar_url`
+- **useAvatar Hook**: Created `hooks/useAvatar.ts` hook to fetch and cache avatar URLs
+  - Similar pattern to `useDisplayName` hook
+  - Returns `{ avatarUrl, loading, refresh }`
+  - Automatically checks cache first, then fetches from database if needed
+- **Sidebar Avatar Display**: Updated `components/AppSidebar.tsx` to display actual avatar images
+  - Now uses `AvatarImage` component with cached/database avatar URL
+  - Falls back to initials if no avatar is available
+  - Uses `useAvatar` hook for automatic caching and updates
+- **Chat Message Avatars**: Updated `components/ChatMessage.tsx` and `components/ChatMessageBubble.tsx` to display user profile avatars
+  - User messages now show actual profile pictures instead of just icons
+  - Uses `useAvatar` hook to fetch and cache avatar URLs
+  - Falls back to User icon if no avatar is available
+  - Bot messages continue to use Bot icon (no change)
+
+### Improved
+- **Profile Avatar Upload**: Enhanced `components/profile/ProfileAvatar.tsx` to automatically update localStorage cache after successful upload
+  - Avatar URL is now cached immediately after upload, ensuring instant availability across the app
+- **Profile Page**: Updated `app/(app)/profile/page.tsx` to sync avatar URL cache when avatar is updated
+  - `handleAvatarUpdate` now updates both local state and localStorage cache
+
+### Technical Details
+- Avatar URLs are cached in localStorage with user ID and timestamp for validation
+- Cache automatically expires after 24 hours or when user changes
+- All avatar displays across the app now use the cached URL for instant updates
+- ChatLeftSidebar verified - only uses User icon, no avatar image display needed
+- ChatMessage and ChatMessageBubble components updated to display user avatars in chat messages
+- ChatMessageBubble now accepts optional `userId` prop for avatar display
+
+## 2025-01-13 - Fix Profile Picture Upload RLS Policy
+
+### Fixed
+- **Profile Avatar Upload RLS Error**: Fixed "new row violates row-level security policy" error when uploading profile pictures
+  - **Root Cause**: The RLS policies for the `avatars` storage bucket were never applied to the database, and when initially created, they used incorrect logic that didn't handle UUID user IDs correctly
+  - **Issue**: User IDs are UUIDs (e.g., `131e8334-6605-4e36-86cd-8cf51e1ef017`) which contain hyphens. The original policy used `split_part(name, '-', 1)` which only extracted the first segment (`131e8334`) instead of the full UUID
+  - **Solution**: Updated migration `20250113000001_fix_avatars_storage_rls_policies.sql` with correct policy logic that checks if filename STARTS WITH the user ID using `LIKE` pattern matching
+  - **Policies Created**:
+    - "Users can upload own avatars" - Allows authenticated users to upload files with their user ID prefix
+    - "Users can update own avatars" - Allows users to update their own avatar files
+    - "Users can delete own avatars" - Allows users to delete their own avatar files
+    - "Anyone can view avatars" - Public read access for avatar images
+  - **File Naming Pattern**: Files must be named `{userId}-{timestamp}.{ext}` (e.g., `131e8334-6605-4e36-86cd-8cf51e1ef017-1736789123456.jpg`)
+  - **Policy Logic**: Uses `split_part(name, '/', -1) LIKE (auth.uid()::text || '-%')` to check if filename starts with the full user ID
+
+### Technical Details
+- Storage RLS policies control access to files in Supabase Storage buckets
+- The `storage.objects` table requires RLS policies for INSERT, UPDATE, DELETE, and SELECT operations
+- Policies check that the filename starts with the authenticated user's ID to ensure users can only manage their own avatars
+- **IMPORTANT**: The migration file has been updated but needs to be applied manually via Supabase Dashboard SQL Editor or CLI due to storage policy permission restrictions in MCP
+
+### Manual Application Required
+To apply the fix, run the migration file `supabase/migrations/20250113000001_fix_avatars_storage_rls_policies.sql` via:
+1. **Supabase Dashboard**: Go to SQL Editor and paste the migration SQL
+2. **Supabase CLI**: Run `supabase db push` (if connected to the project)
+
 ## 2025-01-08 (Evening) - Fix Analytics Schema API Access
 
 ### Fixed

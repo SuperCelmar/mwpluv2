@@ -4,6 +4,8 @@ import { Message } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAvatar } from '@/hooks/useAvatar';
 
 interface ChatMessageProps {
   message: Message;
@@ -12,6 +14,8 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const content = 'content' in message ? message.content : message.message;
+  const userId = 'user_id' in message ? message.user_id : null;
+  const { avatarUrl } = useAvatar(isUser && userId ? userId : null);
 
   return (
     <div
@@ -25,21 +29,21 @@ export function ChatMessage({ message }: ChatMessageProps) {
       aria-label={isUser ? 'User message' : 'Assistant message'}
     >
       {/* Avatar */}
-      <div
-        className={cn(
-          'flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-full transition-all duration-200',
-          isUser
-            ? 'bg-blue-600 text-white shadow-sm'
-            : 'bg-blue-50 text-blue-700 shadow-sm'
-        )}
-        aria-hidden="true"
-      >
-        {isUser ? (
-          <User className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
-        ) : (
+      {isUser ? (
+        <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0">
+          <AvatarImage src={avatarUrl || undefined} alt="Avatar" />
+          <AvatarFallback className="bg-blue-600 text-white shadow-sm text-xs sm:text-sm">
+            <User className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
+          </AvatarFallback>
+        </Avatar>
+      ) : (
+        <div
+          className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-full bg-blue-50 text-blue-700 shadow-sm transition-all duration-200"
+          aria-hidden="true"
+        >
           <Bot className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Message Content */}
       <div className="flex-1 min-w-0 max-w-4xl">

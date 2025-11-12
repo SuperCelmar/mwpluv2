@@ -2,14 +2,18 @@
 
 import { cn } from '@/lib/utils';
 import { User, Bot } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAvatar } from '@/hooks/useAvatar';
 
 interface ChatMessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
+  userId?: string | null;
 }
 
-export function ChatMessageBubble({ role, content }: ChatMessageBubbleProps) {
+export function ChatMessageBubble({ role, content, userId }: ChatMessageBubbleProps) {
   const isUser = role === 'user';
+  const { avatarUrl } = useAvatar(isUser && userId ? userId : null);
 
   return (
     <div
@@ -46,12 +50,12 @@ export function ChatMessageBubble({ role, content }: ChatMessageBubbleProps) {
 
       {/* User Avatar - Right side */}
       {isUser && (
-        <div
-          className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-full bg-blue-600 text-white transition-all duration-200"
-          aria-hidden="true"
-        >
-          <User className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
-        </div>
+        <Avatar className="h-8 w-8 sm:h-9 sm:w-9 shrink-0">
+          <AvatarImage src={avatarUrl || undefined} alt="Avatar" />
+          <AvatarFallback className="bg-blue-600 text-white transition-all duration-200 text-xs sm:text-sm">
+            <User className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
+          </AvatarFallback>
+        </Avatar>
       )}
     </div>
   );

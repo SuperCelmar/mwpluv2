@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, Calendar, Save, X, Loader2 } from "lucide-react";
 import type { Profile } from "@/lib/supabase";
 import { clearCachedDisplayName, setCachedDisplayName, getDisplayNameFromProfile } from "@/lib/utils/profile-display-name";
+import { setCachedAvatarUrl } from "@/lib/utils/profile-avatar";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -190,11 +191,11 @@ export default function ProfilePage() {
 
       if (updatedProfile) {
         setProfile(updatedProfile);
-        // Invalidate and update cache with new display name
-        clearCachedDisplayName();
+        // Update cache with new display name (this will notify all components automatically)
         const newDisplayName = getDisplayNameFromProfile(updatedProfile);
-        if (newDisplayName && user.id) {
-          setCachedDisplayName(user.id, newDisplayName);
+        if (user.id) {
+          // Always update cache, even if displayName is empty (to clear old cached value)
+          setCachedDisplayName(user.id, newDisplayName || '');
         }
       }
 
@@ -230,8 +231,10 @@ export default function ProfilePage() {
   };
 
   const handleAvatarUpdate = (newAvatarUrl: string) => {
-    if (profile) {
+    if (profile && user) {
       setProfile({ ...profile, avatar_url: newAvatarUrl });
+      // Update localStorage cache
+      setCachedAvatarUrl(user.id, newAvatarUrl);
     }
   };
 

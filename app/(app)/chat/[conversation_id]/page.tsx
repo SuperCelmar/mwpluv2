@@ -495,6 +495,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                 key={message.id}
                 role={message.role as 'user' | 'assistant'}
                 content={message.message}
+                userId={message.role === 'user' ? userId : null}
               />
             ))}
           

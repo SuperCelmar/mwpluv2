@@ -16,12 +16,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useEffect, useLayoutEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getSidebarState } from "@/lib/utils/sidebar-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisplayName } from "@/hooks/useDisplayName";
+import { useAvatar } from "@/hooks/useAvatar";
 
 export function AppSidebar() {
   const router = useRouter();
@@ -35,6 +36,7 @@ export function AppSidebar() {
   const isRestoringRef = useRef(true);
   const initialOpenStateRef = useRef<boolean | null>(null);
   const { displayName, loading: displayNameLoading } = useDisplayName(user?.id || null);
+  const { avatarUrl, loading: avatarLoading } = useAvatar(user?.id || null);
 
   // Load sidebar state from localStorage synchronously before first paint
   // This prevents animation when restoring state on refresh
@@ -183,6 +185,7 @@ export function AppSidebar() {
                   )}>
                     <div className="flex items-center justify-start flex-shrink-0 w-5">
                       <Avatar className="h-5 w-5 flex-shrink-0">
+                        <AvatarImage src={avatarUrl || undefined} alt="Avatar" />
                         <AvatarFallback className="text-xs bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200">
                           {user?.email?.charAt(0).toUpperCase() || 'U'}
                         </AvatarFallback>

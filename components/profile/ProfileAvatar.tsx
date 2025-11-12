@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { updateUserProfile } from '@/lib/supabase/queries-profile';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { setCachedAvatarUrl } from '@/lib/utils/profile-avatar';
 
 interface ProfileAvatarProps {
   userId: string;
@@ -126,6 +127,9 @@ export function ProfileAvatar({
         throw updateError;
       }
 
+      // Update localStorage cache
+      setCachedAvatarUrl(userId, publicUrl);
+      
       onUpdate(publicUrl);
       toast({
         title: 'Succès',
