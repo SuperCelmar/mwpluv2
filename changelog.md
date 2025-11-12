@@ -1,5 +1,90 @@
 # Changelog
 
+## 2025-01-XX - Breadcrumb Header for Chat Conversations
+
+### Added
+- **Breadcrumb navigation header** (`components/ConversationBreadcrumb.tsx`): Added breadcrumb component above chat messages showing project name and conversation name
+  - Project name displays as clickable text link (navigates to project page) or "Untitled Project" if no project
+  - Conversation name displays as plain text without dropdown menu
+  - Plain text styling without rounded rectangle borders
+  - Positioned above messages, below AppSidebar
+
+### Changed
+- **Breadcrumb component** (`components/ConversationBreadcrumb.tsx`): Removed dropdown menu from conversation breadcrumb
+  - Removed ConversationActions dropdown menu to prevent blocking conversation name
+  - Changed default project name from "Untitled" to "Untitled Project" for clarity
+  - Simplified component interface by removing onRename and onDelete props
+
+- **Rename conversation dialog** (`components/RenameConversationDialog.tsx`): Added dialog component for renaming conversations
+  - Input field for new conversation title
+  - Save and cancel buttons
+  - Validates that title is not empty
+  - Updates conversation title in database on save
+
+### Changed
+- **Chat conversation page** (`app/chat/[conversation_id]/page.tsx`): Enhanced with breadcrumb header and conversation management
+  - Fetches project data when `conversation.project_id` exists
+  - Added state management for project, rename dialog, and delete dialog
+  - Implemented `handleRename` to open rename dialog
+  - Implemented `handleSaveRename` to update conversation title in database
+  - Implemented `handleDelete` to archive conversation (set `is_active = false`) and redirect to `/chats`
+  - Breadcrumb component integrated above ScrollArea
+  - Rename and delete dialogs integrated
+
+- **ConversationActions component** (`components/ConversationActions.tsx`): Updated menu text to reference "conversation" instead of "projet"
+  - "Renommer le projet" → "Renommer la conversation"
+  - "Supprimer le projet" → "Supprimer la conversation"
+
+- **DeleteProjectDialog component** (`components/DeleteProjectDialog.tsx`): Updated text to reference "conversation" instead of "projet"
+  - Dialog title: "Supprimer le projet ?" → "Supprimer la conversation ?"
+  - Description updated to remove mention of "toutes les conversations associées"
+
+### Technical Details
+- Created `ConversationBreadcrumb` component using shadcn breadcrumb components
+- Removed Badge components to use plain text styling, preventing text truncation by dropdown icon
+- Created `RenameConversationDialog` component using shadcn dialog and input components
+- Added project fetching logic in `loadConversation` function
+- Conversation name derived from `conversation.title` or `context_metadata.initial_address`
+- Project name defaults to "Untitled" if `project.name` is null
+- Breadcrumb positioned in flex layout between AppSidebar and ScrollArea
+- All handlers include proper error handling and state updates
+
+## 2025-01-XX - Chat Conversation Page Improvements
+
+### Added
+- **Sidebar in chat conversation page** (`app/chat/[conversation_id]/page.tsx`): Added AppSidebar to chat conversation pages for navigation
+  - Users can now access navigation links and recent conversations from chat pages
+  - Sidebar maintains consistent behavior across all pages
+
+### Changed
+- **Logo visibility** (`components/AppSidebar.tsx`): Logo is now hidden on chat conversation pages when sidebar is open
+  - Logo only shows on non-chat pages to reduce visual clutter during conversations
+  - Uses `usePathname` hook to detect chat conversation routes (`/chat/[id]`)
+  - Sidebar toggle button remains visible for navigation
+
+- **Initial address as first message** (`app/chat/[conversation_id]/page.tsx`): Initial address from conversation metadata is now displayed as the first message
+  - Address from `context_metadata.initial_address` is shown as a user message with type `address_search`
+  - Appears before all other messages, even for existing conversations
+  - Messages are sorted by `conversation_turn` first, then by `created_at` to ensure proper order
+  - Prevents duplicate address messages if address already exists in message history
+
+- **Simplified chat layout** (`app/chat/[conversation_id]/page.tsx`, `components/ui/ai-prompt-box.tsx`): Removed split layout from chat interface
+  - Chat interface now uses a clean single-column layout: sidebar + full-width chat area
+  - Removed complex `motion.div` positioning animations that created visual splits
+  - Input box now uses simple flex layout at bottom instead of fixed positioning
+  - Removed two-cell split layout (75%/25%) from PromptInputBox component
+  - Logo removed from input box when in chat conversation (only shows on homepage)
+  - Ensures consistent, non-split layout throughout the chat interface
+
+### Technical Details
+- Added `AppSidebar` import and component to chat conversation page layout
+- Modified `loadConversation` function to prepend initial address message when loading conversation
+- Added message sorting logic to ensure chronological order
+- Used `usePathname` hook in AppSidebar to conditionally render Logo component
+- Initial address message uses `conversation_turn: 0` when prepending to existing messages
+- Replaced `motion.div` with fixed positioning with simple `flex-none` div for input box
+- Removed unused `motion` and `cn` imports from framer-motion
+
 ## 2025-01-XX - Profile Dropdown Positioning Fix
 
 ### Fixed

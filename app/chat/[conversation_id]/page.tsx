@@ -2,15 +2,17 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase, V2Conversation, V2Message, V2ResearchHistory } from '@/lib/supabase';
+import { supabase, V2Conversation, V2Message, V2ResearchHistory, V2Project } from '@/lib/supabase';
 import { logChatEvent, getFirstDocumentId } from '@/lib/analytics';
 import { useEnrichment } from './useEnrichment';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { AppSidebar } from '@/components/AppSidebar';
+import { ConversationBreadcrumb } from '@/components/ConversationBreadcrumb';
+import { RenameConversationDialog } from '@/components/RenameConversationDialog';
+import { DeleteConversationDialog } from '@/components/DeleteProjectDialog';
 
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
@@ -18,9 +20,12 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [userId, setUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<V2Message[]>([]);
   const [conversation, setConversation] = useState<V2Conversation | null>(null);
+  const [project, setProject] = useState<V2Project | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [isFirstMessage, setIsFirstMessage] = useState(true);
   const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Use enrichment hook for background enrichment
@@ -82,6 +87,25 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       console.log('[CHAT_PAGE] Conversation loaded successfully, conversation_id:', conv.id);
       setConversation(conv);
 
+      // Load project if project_id exists
+      if (conv.project_id) {
+        console.log('[CHAT_PAGE] Loading project, project_id:', conv.project_id);
+        const { data: projectData, error: projectError } = await supabase
+          .from('v2_projects')
+          .select('*')
+          .eq('id', conv.project_id)
+          .maybeSingle();
+
+        if (projectError) {
+          console.error('[CHAT_PAGE] Error loading project:', projectError);
+        } else if (projectData) {
+          console.log('[CHAT_PAGE] Project loaded successfully, project_id:', projectData.id);
+          setProject(projectData);
+        }
+      } else {
+        console.log('[CHAT_PAGE] No project_id, project will remain null');
+      }
+
       // Load messages for this conversation
       console.log('[CHAT_PAGE] Loading messages for conversation');
       const { data: messagesData, error: messagesError } = await supabase
@@ -103,6 +127,60 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       } else {
         console.log('[CHAT_PAGE] No messages found for conversation');
         setMessages([]);
+      }
+
+      // Add initial address as first message if it exists and no messages yet
+      const initialAddress = (conv.context_metadata as any)?.initial_address;
+      if (initialAddress && (!messagesData || messagesData.length === 0)) {
+        console.log('[CHAT_PAGE] Adding initial address as first message:', initialAddress);
+        const addressMessage: V2Message = {
+          id: `initial-address-${conv.id}`,
+          conversation_id: params.conversation_id,
+          user_id: currentUserId,
+          role: 'user',
+          message: initialAddress,
+          message_type: 'address_search',
+          conversation_turn: 1,
+          referenced_documents: null,
+          referenced_zones: null,
+          referenced_cities: null,
+          search_context: null,
+          intent_detected: null,
+          confidence_score: null,
+          ai_model_used: null,
+          reply_to_message_id: null,
+          metadata: null,
+          created_at: conv.created_at || new Date().toISOString(),
+        };
+        setMessages([addressMessage]);
+      } else if (initialAddress && messagesData && messagesData.length > 0) {
+        // Check if initial address is already in messages
+        const hasAddressMessage = messagesData.some(
+          (msg) => msg.message === initialAddress && msg.message_type === 'address_search'
+        );
+        if (!hasAddressMessage) {
+          console.log('[CHAT_PAGE] Adding initial address as first message (prepending):', initialAddress);
+          const addressMessage: V2Message = {
+            id: `initial-address-${conv.id}`,
+            conversation_id: params.conversation_id,
+            user_id: currentUserId,
+            role: 'user',
+            message: initialAddress,
+            message_type: 'address_search',
+            conversation_turn: 0, // Before first message
+            referenced_documents: null,
+            referenced_zones: null,
+            referenced_cities: null,
+            search_context: null,
+            intent_detected: null,
+            confidence_score: null,
+            ai_model_used: null,
+            reply_to_message_id: null,
+            metadata: null,
+            created_at: conv.created_at || new Date().toISOString(),
+          };
+          setMessages([addressMessage, ...messagesData]);
+        }
       }
 
       // Load research history for context (if exists)
@@ -343,18 +421,85 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   const conversationStarted = !!conversation;
 
+  const handleRename = () => {
+    setShowRenameDialog(true);
+  };
+
+  const handleSaveRename = async (newTitle: string) => {
+    if (!conversation || !userId) return;
+
+    const { error } = await supabase
+      .from('v2_conversations')
+      .update({ title: newTitle })
+      .eq('id', conversation.id)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('[CHAT_PAGE] Error renaming conversation:', error);
+      throw error;
+    }
+
+    // Update local state
+    setConversation({ ...conversation, title: newTitle });
+  };
+
+  const handleDelete = async () => {
+    if (!conversation || !userId) return;
+
+    const { error } = await supabase
+      .from('v2_conversations')
+      .update({
+        is_active: false,
+        archived_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('[CHAT_PAGE] Error deleting conversation:', error);
+      return;
+    }
+
+    // Redirect to chats page
+    router.push('/chats');
+  };
+
+  const conversationName =
+    conversation.title ||
+    (conversation.context_metadata as any)?.initial_address ||
+    'Conversation';
+
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-neutral-900">
-      <div className="flex-1 flex flex-col min-w-0 relative">
+      <AppSidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Breadcrumb header */}
+        {conversation && (
+          <ConversationBreadcrumb
+            project={project}
+            conversation={conversation}
+          />
+        )}
+
         <ScrollArea className="flex-1 p-2 sm:p-4" ref={scrollRef}>
           <div className="space-y-1 sm:space-y-2 max-w-4xl mx-auto pb-24">
-            {messages.map((message) => (
-              <ChatMessageBubble 
-                key={message.id}
-                role={message.role as 'user' | 'assistant'}
-                content={message.message}
-              />
-            ))}
+            {messages
+              .sort((a, b) => {
+                // Sort by conversation_turn first, then by created_at
+                if (a.conversation_turn !== null && b.conversation_turn !== null) {
+                  return a.conversation_turn - b.conversation_turn;
+                }
+                if (a.conversation_turn !== null) return -1;
+                if (b.conversation_turn !== null) return 1;
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              })
+              .map((message) => (
+                <ChatMessageBubble 
+                  key={message.id}
+                  role={message.role as 'user' | 'assistant'}
+                  content={message.message}
+                />
+              ))}
             
             {/* AI loading icon below first message */}
             {sendingMessage && messages.length > 0 && (
@@ -366,30 +511,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           </div>
         </ScrollArea>
 
-        {/* PromptInputBox with animation - slides to bottom when conversation starts */}
-        <motion.div
-          initial={false}
-          animate={{
-            bottom: conversationStarted ? 0 : undefined,
-            top: conversationStarted ? undefined : '50%',
-            left: conversationStarted ? 0 : '50%',
-            right: conversationStarted ? 0 : undefined,
-            x: conversationStarted ? 0 : '-50%',
-            y: conversationStarted ? 0 : '-50%',
-          }}
-          transition={{
-            type: 'spring',
-            stiffness: 300,
-            damping: 30,
-          }}
-          className={cn(
-            "fixed z-50",
-            conversationStarted 
-              ? "p-4 bg-white dark:bg-neutral-900 border-t" 
-              : "w-full max-w-2xl"
-          )}
-        >
-          <div className={conversationStarted ? 'max-w-4xl mx-auto' : 'w-full'}>
+        {/* PromptInputBox - fixed at bottom, full width */}
+        <div className="flex-none p-4 bg-white dark:bg-neutral-900">
+          <div className="max-w-4xl mx-auto">
             <PromptInputBox
               onSend={handleSendMessage}
               isLoading={sendingMessage}
@@ -397,8 +521,28 @@ export default function ChatConversationPage({ params }: { params: { conversatio
               conversationStarted={conversationStarted}
             />
           </div>
-        </motion.div>
+        </div>
       </div>
+
+      {/* Rename Dialog */}
+      {conversation && (
+        <RenameConversationDialog
+          open={showRenameDialog}
+          onOpenChange={setShowRenameDialog}
+          currentTitle={conversation.title}
+          onSave={handleSaveRename}
+        />
+      )}
+
+      {/* Delete Dialog */}
+      {conversation && (
+        <DeleteConversationDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={handleDelete}
+          ConversationName={conversationName}
+        />
+      )}
     </div>
   );
 }

@@ -617,8 +617,8 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
 
   const contentDiv = (
     <div className="relative w-full">
-      {/* Logo above the input box */}
-      {mounted && (
+      {/* Logo above the input box - only show when conversation hasn't started */}
+      {mounted && !conversationStarted && (
         <div className="flex justify-center mb-6">
           <Image
             src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
@@ -914,19 +914,7 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
 
   return (
     <>
-      {!conversationStarted ? (
-        <div className="flex flex-col h-screen">
-          {/* Top cell - 75% */}
-          <div className="flex-[0.75] flex items-center justify-end">
-            {contentDiv}
-          </div>
-          {/* Bottom cell - 25% - empty spacer */}
-          <div className="flex-[0.25]" />
-        </div>
-      ) : (
-        contentDiv
-      )}
-
+      {contentDiv}
       <ImageViewDialog imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />
     </>
   );

@@ -23,10 +23,10 @@ export function DeleteConversationDialog({ open, onOpenChange, onConfirm, Conver
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Supprimer le projet ?</AlertDialogTitle>
+          <AlertDialogTitle>Supprimer la conversation ?</AlertDialogTitle>
           <AlertDialogDescription>
-            Êtes-vous sûr de vouloir supprimer le projet "{ConversationName}" ?
-            Cette action est irréversible et supprimera toutes les conversations associées.
+            Êtes-vous sûr de vouloir supprimer la conversation "{ConversationName}" ?
+            Cette action est irréversible.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -27,12 +27,12 @@ export function ConversationActions({ onRename, onDelete }: ConversationActionsP
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onRename} className="cursor-pointer">
           <Edit2 className="mr-2 h-4 w-4" />
-          Renommer le projet
+          Renommer la conversation
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onDelete} className="cursor-pointer text-red-600">
           <Trash2 className="mr-2 h-4 w-4" />
-          Supprimer le projet
+          Supprimer la conversation
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

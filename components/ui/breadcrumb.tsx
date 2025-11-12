@@ -88,7 +88,7 @@ const BreadcrumbPage = React.forwardRef<
     aria-disabled="true"
     aria-current="page"
     className={cn(
-      'inline-flex items-center gap-1.5 font-medium text-foreground truncate max-w-[200px]',
+      'inline-flex items-center gap-1.5 font-medium text-foreground',
       className
     )}
     {...props}
