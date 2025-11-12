@@ -1,5 +1,185 @@
 # Changelog
 
+## 2025-12-06 - Remove user_settings Table and Related Functionality
+
+### Removed
+- **Database migration**: Deleted `supabase/migrations/20251206000001_create_user_settings.sql`
+  - Removed user_settings table creation
+  - Removed automatic settings creation trigger
+  - Removed settings-related RLS policies
+
+- **Profile Page** (`app/(app)/profile/page.tsx`):
+  - Removed Preferences section (default_city_id, interface_language, ai_response_language)
+  - Removed user_settings state and related form fields
+  - Removed settings update logic from handleSave and handleCancel
+  - Removed unused imports (Select components, MapPin, Languages icons, City type, getCities)
+
+- **Settings Page** (`app/(app)/settings/page.tsx`):
+  - Removed "Préférences d'affichage" section (font_size, ui_density, interface_language)
+  - Removed "Historique de recherche" section (search_history_retention_days)
+  - Removed "Cookies et analytics" section (cookies_consent, analytics_consent)
+  - Removed user_settings state and loadSettings logic
+  - Removed handleSettingChange function
+  - Removed updateUserSettings import
+
+- **Database Queries** (`lib/supabase/queries-profile.ts`):
+  - Removed `updateUserSettings()` function
+  - Updated `getUserProfile()` to no longer return settings
+  - Removed user_settings queries from `exportUserData()`
+  - Removed UserSettings type import
+
+- **Type Definitions** (`lib/supabase.ts`):
+  - Removed `UserSettings` type definition
+
+### Changed
+- Profile page now only manages basic profile fields (pseudo, first_name, last_name, full_name, phone)
+- Settings page simplified to focus on account security and theme preferences only
+
+## 2025-12-06 - Update Profile Page to Use Auth last_sign_in_at and Add Analytics
+
+### Changed
+- **Profile Page** (`app/(app)/profile/page.tsx`):
+  - Now uses `last_sign_in_at` from `auth.users` table instead of `profiles.last_login_at`
+  - Fetches last sign-in time directly from Supabase Auth user object
+  - Added comprehensive usage analytics section displaying:
+    - Message count (from analytics.user_monthly_usage or analytics.chat_events)
+    - Commands count (from v2_messages where role = 'user')
+    - Stars given (from ratings table)
+    - Reviews given (from comments table)
+    - Downloads count (from downloads table)
+    - Total tokens used (from analytics schema)
+    - Total cost (from analytics schema)
+
+- **Database Queries** (`lib/supabase/queries-profile.ts`):
+  - Updated `getUserProfile()`: Removed dependency on `profiles.last_login_at`
+  - Added `getUserAnalytics()`: New function to fetch user usage statistics from:
+    - `analytics.user_monthly_usage` for current month aggregated data
+    - `analytics.chat_events` as fallback for message count, cost, and tokens
+    - `public.downloads` for download count
+    - `public.ratings` for stars count
+    - `public.comments` for reviews count
+    - `v2_messages` for commands count
+
+### Technical Details
+- Analytics data is fetched from the analytics schema using dot notation (`analytics.user_monthly_usage`, `analytics.chat_events`)
+- Falls back to aggregating from `chat_events` if monthly usage data is not available
+- All analytics queries handle errors gracefully and default to 0 if data is unavailable
+- Last sign-in time is now sourced from Supabase Auth, which is the authoritative source
+
+## 2025-12-06 - Build Comprehensive Profile and Settings Pages
+
+### Added
+- **Database migrations**:
+  - `user_settings` table: Stores user preferences for interface, notifications, privacy, and app behavior
+    - Geographic preferences (default_city_id)
+    - Language preferences (interface_language, ai_response_language)
+    - UI preferences (font_size, ui_density)
+    - Notification preferences (notifications_enabled, plu_updates_enabled, inactive_project_reminders, weekly_digest_enabled, marketing_emails_enabled, email_frequency)
+    - Privacy preferences (search_history_retention_days, cookies_consent, analytics_consent)
+    - Automatic creation trigger for new users
+    - RLS policies for user data access
+  - `login_history` table: Stores login attempts and session history for security monitoring
+    - Tracks IP address, user agent, device type, location
+    - Records success/failure status
+    - RLS policies for users to view own history
+  - `last_login_at` column added to `profiles` table
+
+- **Profile Page** (`app/(app)/profile/page.tsx`): Complete rebuild with comprehensive features
+  - Editable avatar with upload functionality (ProfileAvatar component)
+  - Editable profile fields: pseudo, full name, phone
+  - Account status badge (Active/Suspended/Paused)
+  - Member since and last login display
+  - Quick stats section showing:
+    - Projects created count
+    - Documents analyzed count
+    - Estimated hours saved
+    - Starred projects count
+  - Default geographic zone selector (city dropdown)
+  - Language preferences (Interface and AI response languages)
+  - Edit mode with save/cancel functionality
+  - Loading states and error handling
+
+- **Settings Page** (`app/(app)/settings/page.tsx`): Complete rebuild with 7 organized sections
+  - **Account & Security Tab**:
+    - Change password form with validation
+    - Two-Factor Authentication toggle (UI prepared, backend later)
+    - Active sessions list (SessionsList component)
+    - Login history table (LoginHistoryTable component)
+    - Delete account dialog with 30-day delay confirmation
+  - **App Preferences Tab**:
+    - Theme selection (Light/Dark/System)
+    - Font size selector (Small/Medium/Large)
+    - UI density selector (Compact/Comfortable/Spacious)
+    - Interface language selector
+  - **Notifications & Alerts Tab**:
+    - In-app notifications toggle
+    - PLU updates toggle
+    - Inactive project reminders toggle
+    - Weekly digest toggle
+    - Marketing emails toggle
+    - Email frequency selector (Daily/Weekly/Monthly/Never)
+  - **Privacy & Data Tab**:
+    - Download my data button (DataExportDialog component)
+    - Search history retention selector
+    - Cookies consent toggle
+    - Analytics consent toggle
+    - GDPR compliance info
+  - **Billing & Subscription Tab**: Placeholder structure for future implementation
+  - **Integrations Tab**: Placeholder structure for future implementation
+  - **About & Legal Tab**:
+    - App version display
+    - Links to CGU, Privacy Policy, GDPR
+    - Support contact information
+
+- **Supporting Components**:
+  - `ProfileAvatar` (`components/profile/ProfileAvatar.tsx`): Editable avatar with file upload
+  - `ProfileStats` (`components/profile/ProfileStats.tsx`): Statistics cards display
+  - `SettingsSection` (`components/settings/SettingsSection.tsx`): Reusable section wrapper
+  - `SettingsRow` (`components/settings/SettingsSection.tsx`): Reusable settings row component
+  - `SessionsList` (`components/settings/SessionsList.tsx`): Active sessions display and management
+  - `LoginHistoryTable` (`components/settings/LoginHistoryTable.tsx`): Login history table with filtering
+  - `DeleteAccountDialog` (`components/settings/DeleteAccountDialog.tsx`): Account deletion confirmation dialog
+  - `DataExportDialog` (`components/settings/DataExportDialog.tsx`): Data export UI with JSON/CSV options
+
+- **Database Query Functions** (`lib/supabase/queries-profile.ts`):
+  - `getUserProfile()`: Fetch profile + settings
+  - `updateUserProfile()`: Update profile fields
+  - `updateUserSettings()`: Update settings
+  - `getUserStatistics()`: Aggregate stats from projects/documents
+  - `getLoginHistory()`: Fetch user login history
+  - `logLoginAttempt()`: Log login attempt to history
+  - `getActiveSessions()`: Fetch from Supabase Auth
+  - `exportUserData()`: Generate JSON/CSV export
+  - `requestAccountDeletion()`: Set deletion_requested_at with 30-day delay
+  - `updateLastLogin()`: Update last login timestamp
+  - `getCities()`: Get all cities for dropdown selection
+
+- **Utility Functions** (`lib/utils/profile-helpers.ts`):
+  - `calculateHoursSaved()`: Estimate hours saved based on projects/documents
+  - `formatLastLogin()`: Format timestamp for display (relative time)
+  - `getAccountStatus()`: Determine status from profile
+  - `formatAccountStatus()`: Format status for display
+  - `getStatusBadgeColor()`: Get badge color for status
+
+- **Type Definitions** (`lib/supabase.ts`):
+  - `UserSettings` type: Complete type definition for user settings
+  - `LoginHistory` type: Type definition for login history entries
+  - Updated `Profile` type: Added `last_login_at` field
+
+### Changed
+- **Profile Page**: Complete rewrite with new features and improved UX
+- **Settings Page**: Complete rewrite with tabbed interface and comprehensive settings management
+
+### Technical Details
+- All database operations use RLS policies for security
+- Settings are automatically created for new users via trigger
+- Form validation and error handling throughout
+- Loading states and optimistic updates where appropriate
+- Toast notifications for user feedback
+- Responsive design for mobile and desktop
+- Follows existing B/W minimal design aesthetic
+- Uses existing UI components (Card, Tabs, Accordion, Input, Select, Switch, Button, etc.)
+
 ## 2025-01-XX - Add Search Functionality to Chats Page
 
 ### Added

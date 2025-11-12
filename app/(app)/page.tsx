@@ -172,7 +172,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex items-center justify-center p-4">
+    <div className="flex items-center justify-center pt-36 p-4">
       <div className="w-full max-w-2xl">
         <PromptInputBox
           onSend={handleSend}

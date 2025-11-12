@@ -5,6 +5,7 @@ import { Sidebar, SidebarBody, SidebarLink, Logo, SidebarToggle, RecentConversat
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, MessageSquare, Folder, User, Settings, LogOut, Sun, Moon, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import {
@@ -218,11 +219,23 @@ export function AppSidebar() {
               >
                 <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push('/profile')}>
+                <DropdownMenuItem 
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    router.push('/profile');
+                  }}
+                  className="cursor-pointer"
+                >
                   <User className="mr-2 h-4 w-4" />
                   Profil
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push('/settings')}>
+                <DropdownMenuItem 
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    router.push('/settings');
+                  }}
+                  className="cursor-pointer"
+                >
                   <Settings className="mr-2 h-4 w-4" />
                   Paramètres
                 </DropdownMenuItem>

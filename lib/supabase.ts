@@ -19,8 +19,22 @@ export type Profile = {
   deletion_requested_at: string | null;
   deletion_scheduled_for: string | null;
   deletion_reason: string | null;
+  last_login_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+
+export type LoginHistory = {
+  id: string;
+  user_id: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  device_type: string | null;
+  location: string | null;
+  success: boolean;
+  failure_reason: string | null;
+  created_at: string;
 };
 
 // Geographic & PLU Types
