@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
 import { InitialAddressInput } from '@/components/InitialAddressInput';
-import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
+import { AppSidebar } from '@/components/AppSidebar';
 import { AddressSuggestion } from '@/lib/address-api';
 import { createLightweightConversation } from '@/lib/supabase/queries';
 import { toast } from '@/hooks/use-toast';
@@ -123,10 +123,8 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
-      <ChatLeftSidebar
-        onNewConversation={handleNewConversation}
-      />
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-neutral-900">
+      <AppSidebar />
       <div className="flex-1 flex items-center justify-center">
         <InitialAddressInput
           onAddressSubmit={handleAddressSubmit}

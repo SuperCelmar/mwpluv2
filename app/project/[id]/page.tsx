@@ -60,7 +60,7 @@ export default function ConversationPage({ params }: { params: { id: string } })
       if (error) throw error;
 
       if (!data) {
-        router.push('/dashboard');
+        router.push('/projects');
         return;
       }
 

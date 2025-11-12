@@ -1,5 +1,45 @@
 # Changelog
 
+## 2025-11-12 - Animated Sidebar Integration
+
+### Added
+- **framer-motion dependency**: Installed framer-motion package for sidebar animations
+- **Sidebar component** (`components/ui/sidebar.tsx`): New animated sidebar component with:
+  - Hover-to-expand functionality on desktop
+  - Mobile overlay sidebar with slide animations
+  - Recent conversations display when expanded
+  - Logo components (Logo and LogoIcon) using MWPLU branding
+- **AppSidebar component** (`components/AppSidebar.tsx`): Wrapper component integrating sidebar with:
+  - Navigation links (New chats, Chat, Projects)
+  - Profile dropdown menu with Settings, Profile, Theme toggle, and Sign out
+  - User avatar display
+- **ThemeProvider** (`components/ThemeProvider.tsx`): Added next-themes ThemeProvider wrapper
+- **New pages**:
+  - `/app/chats/page.tsx`: Conversations list page with scrollable conversation list
+  - `/app/projects/page.tsx`: Projects page (renamed from dashboard)
+  - `/app/profile/page.tsx`: User profile page with account information
+  - `/app/settings/page.tsx`: Settings page with theme toggle (light/dark/system)
+
+### Changed
+- **Layout** (`app/layout.tsx`): Added ThemeProvider wrapper for theme support
+- **Home page** (`app/page.tsx`): Replaced ChatLeftSidebar with AppSidebar
+- **Chat page** (`app/chat/[conversation_id]/page.tsx`): Replaced ChatLeftSidebar with AppSidebar, added dark mode support
+- **Route updates**: Changed `/dashboard` route to `/projects`:
+  - Updated `components/ChatSidebar.tsx` to navigate to `/projects`
+  - Updated `app/project/[id]/page.tsx` redirects to `/projects`
+  - Updated `middleware.ts` matcher to include `/projects`
+- **Sidebar features**:
+  - Recent conversations appear on hover and disappear when hover ends
+  - Profile menu includes Settings, Profile, Theme toggle, and Sign out
+  - Navigation links: New chats (/), Chat (/chats), Projects (/projects)
+
+### Technical Details
+- Sidebar expands from 60px to 300px on hover (desktop)
+- Mobile sidebar slides in from left as overlay
+- Recent conversations fetched from `v2_conversations` table when sidebar opens
+- Theme toggle supports light, dark, and system preferences
+- All pages updated with dark mode styling support
+
 ## 2025-01-XX - Brand Assets Integration
 
 ### Added

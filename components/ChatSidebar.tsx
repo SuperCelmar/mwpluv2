@@ -22,7 +22,7 @@ export function ChatSidebar({ Conversations, currentConversationId, onNewConvers
         <Button
           variant="ghost"
           className="w-full justify-start gap-2 mb-4"
-          onClick={() => router.push('/dashboard')}
+          onClick={() => router.push('/projects')}
         >
           <ArrowLeft className="h-4 w-4" />
           Tableau de bord

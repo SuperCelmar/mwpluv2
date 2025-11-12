@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { supabase, V2Conversation, V2Message, V2ResearchHistory } from '@/lib/supabase';
 import { logChatEvent, getFirstDocumentId } from '@/lib/analytics';
 import { useEnrichment } from './useEnrichment';
-import { ChatLeftSidebar } from '@/components/ChatLeftSidebar';
+import { AppSidebar } from '@/components/AppSidebar';
 import { ChatRightPanel } from '@/components/ChatRightPanel';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
 import { ChatInputField } from '@/components/ChatInputField';
@@ -1166,16 +1166,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
-      <ChatLeftSidebar
-        onNewConversation={handleNewConversation}
-      />
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-neutral-900">
+      <AppSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="border-b bg-white px-4 py-3 flex items-center justify-between shrink-0">
+        <header className="border-b bg-white dark:bg-neutral-800 px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex-1 text-center">
             {conversation?.context_metadata?.initial_address && (
-              <p className="text-sm text-gray-600 truncate">
+              <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
                 {conversation.context_metadata.initial_address}
               </p>
             )}
