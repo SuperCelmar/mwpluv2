@@ -44,7 +44,7 @@ export function DeleteConversationDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>
             {projectName 
@@ -69,33 +69,36 @@ export function DeleteConversationDialog({
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className={projectName ? 'flex-col sm:flex-row gap-2' : ''}>
-          <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
+        <AlertDialogFooter className={projectName ? '!flex-col !sm:flex-row gap-2 sm:justify-end' : ''}>
           {projectName ? (
             <>
+              <AlertDialogCancel disabled={deleting} className="w-full sm:w-auto order-3 sm:order-1">Annuler</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={handleDeleteConversationOnly} 
                 disabled={deleting}
-                className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50"
+                className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50 w-full sm:w-auto order-2"
               >
                 {deleting ? 'Suppression...' : 'Supprimer la conversation uniquement'}
               </AlertDialogAction>
               <AlertDialogAction 
                 onClick={handleDeleteConversationAndProject} 
                 disabled={deleting}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 w-full sm:w-auto order-1 sm:order-3"
               >
                 {deleting ? 'Suppression...' : 'Supprimer la conversation et le projet'}
               </AlertDialogAction>
             </>
           ) : (
-            <AlertDialogAction 
-              onClick={handleDeleteConversationOnly} 
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
-            >
-              {deleting ? 'Suppression...' : 'Supprimer'}
-            </AlertDialogAction>
+            <>
+              <AlertDialogAction 
+                onClick={handleDeleteConversationOnly} 
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Suppression...' : 'Supprimer'}
+              </AlertDialogAction>
+              <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
+            </>
           )}
         </AlertDialogFooter>
       </AlertDialogContent>

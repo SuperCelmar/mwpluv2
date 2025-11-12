@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import Link, { LinkProps } from "next/link";
-import React, { useState, createContext, useContext, useEffect } from "react";
+import React, { useState, createContext, useContext, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import Image from "next/image";
@@ -244,13 +244,7 @@ export const RecentConversations = (): React.ReactElement | null => {
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    if (open) {
-      loadConversations();
-    }
-  }, [open]);
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -274,7 +268,31 @@ export const RecentConversations = (): React.ReactElement | null => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      loadConversations();
+    }
+  }, [open, loadConversations]);
+
+  // Listen for conversation deletion/update events to refresh the list
+  useEffect(() => {
+    const handleConversationChanged = () => {
+      // Only refresh if sidebar is open and not animating
+      if (open && !animate) {
+        loadConversations();
+      }
+    };
+
+    window.addEventListener('conversation:deleted', handleConversationChanged);
+    window.addEventListener('conversation:updated', handleConversationChanged);
+
+    return () => {
+      window.removeEventListener('conversation:deleted', handleConversationChanged);
+      window.removeEventListener('conversation:updated', handleConversationChanged);
+    };
+  }, [open, animate, loadConversations]);
 
   const getCurrentConversationId = () => {
     const match = pathname?.match(/\/chat\/([^\/]+)/);

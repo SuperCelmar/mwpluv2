@@ -262,6 +262,9 @@ export default function ChatsPage() {
       // Refresh conversations list
       await loadConversations();
       
+      // Dispatch event to refresh sidebar conversations without animations
+      window.dispatchEvent(new CustomEvent('conversation:deleted'));
+      
       // Close dialog
       setDeleteDialogOpen(false);
       setConversationToDelete(null);
