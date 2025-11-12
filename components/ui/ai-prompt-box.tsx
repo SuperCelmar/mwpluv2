@@ -28,6 +28,23 @@ const styles = `
   textarea::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--foreground) / 0.5);
   }
+  .address-suggestions-dropdown::-webkit-scrollbar {
+    width: 6px;
+  }
+  .address-suggestions-dropdown::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .address-suggestions-dropdown::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+    border-radius: 3px;
+  }
+  .address-suggestions-dropdown::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground));
+  }
+  .address-suggestions-dropdown {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
+  }
 `;
 
 // Inject styles into document
@@ -331,7 +348,7 @@ const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           <div
             ref={ref}
             className={cn(
-              "rounded-3xl border border-border bg-card p-2 shadow-lg transition-all duration-300",
+              "rounded-xl border border-border bg-card p-2 shadow-lg transition-all duration-300",
               isLoading && "border-destructive/70",
               className
             )}
@@ -614,31 +631,8 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
         </div>
       )}
 
-      {/* Address Suggestions - displayed above the input */}
-      {enableAddressAutocomplete && showAddressSuggestions && addressSuggestions.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 mb-2 z-50 bg-popover border border-border rounded-lg shadow-xl max-h-80 overflow-y-auto">
-          {addressSuggestions.map((suggestion, index) => (
-            <button
-              key={index}
-              onClick={() => handleAddressSuggestionClick(suggestion)}
-              className="w-full text-left px-4 py-3 hover:bg-accent transition-colors border-b border-border last:border-b-0 focus:outline-none focus:bg-accent"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-popover-foreground truncate">
-                    {suggestion.properties.name}
-                  </div>
-                  <div className="text-sm text-muted-foreground truncate">
-                    {suggestion.properties.postcode} {suggestion.properties.city}
-                  </div>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <PromptInput
+      <div className="relative">
+        <PromptInput
         value={input}
         onValueChange={handleInputChange}
         isLoading={isLoading}
@@ -890,6 +884,31 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
           </PromptInputAction>
         </PromptInputActions>
       </PromptInput>
+
+      {/* Address Suggestions - displayed below the input */}
+      {enableAddressAutocomplete && showAddressSuggestions && addressSuggestions.length > 0 && (
+        <div className="address-suggestions-dropdown absolute top-full left-0 right-0 mt-2 z-50 bg-card border border-border rounded-xl shadow-lg max-h-80 overflow-y-auto">
+          {addressSuggestions.map((suggestion, index) => (
+            <button
+              key={index}
+              onClick={() => handleAddressSuggestionClick(suggestion)}
+              className="w-full text-left px-4 py-3 hover:bg-accent transition-colors border-b border-border last:border-b-0 focus:outline-none focus:bg-accent first:rounded-t-xl last:rounded-b-xl"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-popover-foreground truncate">
+                    {suggestion.properties.name}
+                  </div>
+                  <div className="text-sm text-muted-foreground truncate">
+                    {suggestion.properties.postcode} {suggestion.properties.city}
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      </div>
     </div>
   );
 
