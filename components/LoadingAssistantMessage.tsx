@@ -1,7 +1,7 @@
 'use client';
 
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -9,21 +9,36 @@ import type { UseEnrichmentReturn } from '@/app/(app)/chat/[conversation_id]/use
 
 interface LoadingAssistantMessageProps {
   enrichment: UseEnrichmentReturn;
+  isMapRendered?: boolean;
+  isDocumentRendered?: boolean;
+  isFadingOut?: boolean;
 }
 
-type LoadingStage = 'step1' | 'step2' | 'step3' | 'fallback';
+type LoadingStage = 'step1' | 'step2' | 'step3';
 
 const LOADING_MESSAGES: Record<LoadingStage, string> = {
   step1: 'Vérification de la zone concernée...',
   step2: 'Récupération des documents sources...',
   step3: 'Récupération de l\'analyse correspondante...',
-  fallback: 'Vérification des données...',
 };
 
-export function LoadingAssistantMessage({ enrichment }: LoadingAssistantMessageProps) {
+export function LoadingAssistantMessage({ 
+  enrichment, 
+  isMapRendered = false,
+  isDocumentRendered = false,
+  isFadingOut = false
+}: LoadingAssistantMessageProps) {
   const { resolvedTheme } = useTheme();
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('step1');
   const [mounted, setMounted] = useState(false);
+  const [messageOpacity, setMessageOpacity] = useState(1);
+  
+  // Track timestamps for timing control
+  const mapPolygonRenderedTimestamp = useRef<number | null>(null);
+  const documentSkeletonTimestamp = useRef<number | null>(null);
+  const step1MinDelayRef = useRef<NodeJS.Timeout | null>(null);
+  const step2MinDelayRef = useRef<NodeJS.Timeout | null>(null);
+  const step3MinDelayRef = useRef<NodeJS.Timeout | null>(null);
 
   // Determine theme-aware logo path
   const logoSrc = resolvedTheme === 'dark' 
@@ -34,43 +49,111 @@ export function LoadingAssistantMessage({ enrichment }: LoadingAssistantMessageP
     setMounted(true);
   }, []);
 
-  // Determine loading stage based on enrichment progress
+  // Step 1: Map marker displayed, wait for polygon, then 2s delay
   useEffect(() => {
-    const { progress, status } = enrichment;
-
-    // Step 1: When zones or municipality operations are running
-    if (progress.zones === 'loading' || progress.municipality === 'loading') {
-      setLoadingStage('step1');
-      return;
+    const { progress, data } = enrichment;
+    
+    console.log('[LOADING_MESSAGE] Step 1 check:', {
+      loadingStage,
+      isMapRendered,
+      hasMapGeometry: !!data.mapGeometry,
+      timestampExists: !!mapPolygonRenderedTimestamp.current,
+      progressZones: progress.zones,
+      progressMunicipality: progress.municipality
+    });
+    
+    // Check if we're in Step 1 and map with polygon is rendered
+    if (loadingStage === 'step1' && isMapRendered && data.mapGeometry && !mapPolygonRenderedTimestamp.current) {
+      console.log('[LOADING_MESSAGE] Step 1: Map with polygon rendered, starting 2s delay');
+      mapPolygonRenderedTimestamp.current = Date.now();
+      
+      // After 2 seconds, transition to Step 2
+      step1MinDelayRef.current = setTimeout(() => {
+        console.log('[LOADING_MESSAGE] Step 1: 2s delay complete, transitioning to Step 2');
+        // Fade out message
+        setMessageOpacity(0);
+        // After fade out, switch to Step 2
+        setTimeout(() => {
+          setLoadingStage('step2');
+          setMessageOpacity(1);
+        }, 300); // Match fade duration
+      }, 2000);
     }
+  }, [loadingStage, isMapRendered, enrichment.data.mapGeometry]);
 
-    // Step 2: When document operation is running
-    if (progress.document === 'loading') {
-      setLoadingStage('step2');
-      return;
+  // Step 2: Document skeleton shown, wait 1s, then fade in analysis
+  useEffect(() => {
+    const { progress, data } = enrichment;
+    
+    console.log('[LOADING_MESSAGE] Step 2 check:', {
+      loadingStage,
+      hasDocumentId: !!data.documentData?.documentId,
+      hasHtmlContent: !!data.documentData?.htmlContent,
+      timestampExists: !!documentSkeletonTimestamp.current,
+      progressDocument: progress.document
+    });
+    
+    // Check if we're in Step 2 and document skeleton is showing
+    if (loadingStage === 'step2' && data.documentData?.documentId && !documentSkeletonTimestamp.current) {
+      console.log('[LOADING_MESSAGE] Step 2: Document skeleton showing, starting 1s delay');
+      documentSkeletonTimestamp.current = Date.now();
+      
+      // After 1 second, check if document content is ready
+      step2MinDelayRef.current = setTimeout(() => {
+        console.log('[LOADING_MESSAGE] Step 2: 1s delay complete');
+        // If document has content, transition to Step 3
+        if (data.documentData?.htmlContent) {
+          console.log('[LOADING_MESSAGE] Step 2: Document content ready, transitioning to Step 3');
+          // Fade out message
+          setMessageOpacity(0);
+          // After fade out, switch to Step 3
+          setTimeout(() => {
+            setLoadingStage('step3');
+            setMessageOpacity(1);
+          }, 300);
+        }
+      }, 1000);
     }
+  }, [loadingStage, enrichment.data.documentData]);
 
-    // Step 3: When enrichment is completing but not yet done
-    // Check if we have zones/municipality success but document is still processing
-    if (
-      (progress.zones === 'success' || progress.municipality === 'success') &&
-      status === 'enriching'
-    ) {
-      setLoadingStage('step3');
-      return;
+  // Step 3: Analysis message shown, wait 1s, then start fade out
+  useEffect(() => {
+    const { data } = enrichment;
+    
+    console.log('[LOADING_MESSAGE] Step 3 check:', {
+      loadingStage,
+      isDocumentRendered,
+      hasHtmlContent: !!data.documentData?.htmlContent
+    });
+    
+    // Check if we're in Step 3 and document is rendered
+    if (loadingStage === 'step3' && isDocumentRendered && data.documentData?.htmlContent) {
+      console.log('[LOADING_MESSAGE] Step 3: Document rendered, starting 1s delay before fade out');
+      
+      // After 1 second, start fade out
+      step3MinDelayRef.current = setTimeout(() => {
+        console.log('[LOADING_MESSAGE] Step 3: 1s delay complete, starting fade out');
+        setMessageOpacity(0);
+        // Component will be unmounted by parent after fade completes
+      }, 1000);
     }
+  }, [loadingStage, isDocumentRendered, enrichment.data.documentData]);
 
-    // Fallback: When enrichment is in progress but no specific stage detected
-    if (status === 'enriching') {
-      setLoadingStage('fallback');
-      return;
+  // Handle external fade out request
+  useEffect(() => {
+    if (isFadingOut) {
+      setMessageOpacity(0);
     }
+  }, [isFadingOut]);
 
-    // Default to step1 if status is pending
-    if (status === 'pending') {
-      setLoadingStage('step1');
-    }
-  }, [enrichment.progress, enrichment.status]);
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (step1MinDelayRef.current) clearTimeout(step1MinDelayRef.current);
+      if (step2MinDelayRef.current) clearTimeout(step2MinDelayRef.current);
+      if (step3MinDelayRef.current) clearTimeout(step3MinDelayRef.current);
+    };
+  }, []);
 
   const currentMessage = LOADING_MESSAGES[loadingStage];
 
@@ -78,8 +161,9 @@ export function LoadingAssistantMessage({ enrichment }: LoadingAssistantMessageP
     <div
       className={cn(
         'flex gap-2 px-3 py-2 sm:px-4 sm:py-2.5',
-        'justify-start'
+        'justify-start transition-opacity duration-300'
       )}
+      style={{ opacity: messageOpacity }}
       role="article"
       aria-label="Assistant loading message"
     >
@@ -110,9 +194,10 @@ export function LoadingAssistantMessage({ enrichment }: LoadingAssistantMessageP
       {/* Loading Message Bubble */}
       <div
         className={cn(
-          'max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 transition-all duration-200',
+          'max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5',
           'bg-white text-gray-900 shadow-sm border border-gray-200 hover:border-gray-300'
         )}
+        key={loadingStage}
       >
         <div className="flex items-center gap-2">
           <TextShimmer 

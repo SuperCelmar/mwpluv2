@@ -18,6 +18,7 @@ interface MapCardProps {
   onRetry?: () => void;
   status: 'skeleton' | 'loading' | 'ready' | 'error';
   className?: string;
+  onRenderComplete?: () => void;
 }
 
 export function MapCard({ 
@@ -25,7 +26,8 @@ export function MapCard({
   onLoad, 
   onRetry,
   status, 
-  className 
+  className,
+  onRenderComplete
 }: MapCardProps) {
   const handleRetry = () => {
     if (onRetry) {
@@ -100,6 +102,7 @@ export function MapCard({
           lon={data.lon}
           zoneGeometry={data.zoneGeometry}
           isLoading={false}
+          onRenderComplete={onRenderComplete}
         />
       </div>
     );

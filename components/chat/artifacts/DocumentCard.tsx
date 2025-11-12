@@ -17,6 +17,7 @@ interface DocumentCardProps {
   onRetry?: () => void;
   status: 'skeleton' | 'loading' | 'ready' | 'error';
   className?: string;
+  onRenderComplete?: () => void;
 }
 
 export function DocumentCard({ 
@@ -24,7 +25,8 @@ export function DocumentCard({
   onLoad, 
   onRetry,
   status, 
-  className 
+  className,
+  onRenderComplete
 }: DocumentCardProps) {
   const handleRetry = () => {
     if (onRetry) {
@@ -96,7 +98,10 @@ export function DocumentCard({
         'h-full w-full transition-all duration-300 ease-in-out',
         className
       )}>
-        <DocumentViewer htmlContent={data?.htmlContent ?? null} />
+        <DocumentViewer 
+          htmlContent={data?.htmlContent ?? null}
+          onRenderComplete={onRenderComplete}
+        />
       </div>
     );
   }

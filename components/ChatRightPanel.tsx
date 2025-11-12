@@ -19,6 +19,8 @@ interface ChatRightPanelProps {
   activeTab: 'map' | 'document';
   onTabChange: (tab: 'map' | 'document') => void;
   onRetry?: () => void; // Optional for error recovery
+  onMapRenderComplete?: () => void;
+  onDocumentRenderComplete?: () => void;
 }
 
 type ArtifactStatus = 'skeleton' | 'loading' | 'ready' | 'error';
@@ -29,7 +31,9 @@ export function ChatRightPanel({
   artifacts,
   activeTab, 
   onTabChange, 
-  onRetry
+  onRetry,
+  onMapRenderComplete,
+  onDocumentRenderComplete
 }: ChatRightPanelProps) {
   // Map artifact state
   const mapArtifactState = artifacts.map;
@@ -177,6 +181,7 @@ export function ChatRightPanel({
                     onRetry={handleRetryMap}
                     status={mapStatus}
                     className="h-full"
+                    onRenderComplete={onMapRenderComplete}
                   />
                 </div>
               )}
@@ -188,6 +193,7 @@ export function ChatRightPanel({
                     onRetry={handleRetryDocument}
                     status={documentStatus}
                     className="h-full"
+                    onRenderComplete={onDocumentRenderComplete}
                   />
                 </div>
               )}

@@ -1,44 +1,57 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+
 interface DocumentViewerProps {
   htmlContent: string | null;
   className?: string;
+  onRenderComplete?: () => void;
 }
 
-export function DocumentViewer({ htmlContent, className }: DocumentViewerProps) {
-  // Enhanced HTML with better styling
-  const enhancedHtml = htmlContent ? sanitizeAndEnhanceHtml(htmlContent) : null;
+export function DocumentViewer({ htmlContent, className, onRenderComplete }: DocumentViewerProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const renderCompleteCalled = useRef(false);
+
+  // Call onRenderComplete immediately when HTML content is available
+  useEffect(() => {
+    if (htmlContent && !renderCompleteCalled.current && onRenderComplete) {
+      // Small delay to ensure DOM is updated
+      const timeoutId = setTimeout(() => {
+        if (!renderCompleteCalled.current) {
+          renderCompleteCalled.current = true;
+          onRenderComplete();
+        }
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [htmlContent, onRenderComplete]);
+
+  // Sanitize and enhance HTML content
+  const sanitizedHtml = htmlContent ? sanitizeAndEnhanceHtml(htmlContent) : '';
 
   return (
-    <div className={`flex flex-col flex-1 min-h-0 bg-white ${className || ''}`}>
+    <div className={`flex flex-col h-full min-h-0 bg-white ${className || ''}`}>
       {/* Simple header */}
       <div className="flex-shrink-0 border-b bg-white px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-900">Document PLU</h3>
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-white ">
-        <div className="h-full overflow-y-auto">
-          {enhancedHtml ? (
-            <div
-              className="document-viewer-content pl-4 md:pl-8 pr-4 md:pr-8 text-gray-900 prose prose-sm max-w-none space-y-4"
-              style={{
-                '--tw-prose-body': '#1F2937',
-                '--tw-prose-headings': '#111827',
-                '--tw-prose-links': '#2563EB',
-                '--tw-prose-code': '#DC2626',
-                '--tw-prose-pre-bg': '#F3F4F6',
-              } as React.CSSProperties}
-              dangerouslySetInnerHTML={{ __html: enhancedHtml }}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-500">
-                Aucun document disponible
-              </div>
+      <div className="flex-1 overflow-y-auto bg-white">
+        {sanitizedHtml ? (
+          <div
+            ref={contentRef}
+            className="document-viewer-content pl-4 md:pl-8 pr-4 md:pr-8 text-gray-900 prose prose-sm max-w-none space-y-4 py-4"
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-gray-500">
+              Aucun document disponible
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

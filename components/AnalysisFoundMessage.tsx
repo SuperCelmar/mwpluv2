@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { InlineArtifactCard } from '@/components/InlineArtifactCard';
+import { TextGenerateEffect } from '@/components/ui/text-generate-effect';
 import type { UseEnrichmentReturn } from '@/app/(app)/chat/[conversation_id]/useEnrichment';
 import type { DocumentArtifactData } from '@/types/artifacts';
 
@@ -12,15 +13,20 @@ interface AnalysisFoundMessageProps {
   enrichment: UseEnrichmentReturn;
   zoneName: string;
   onViewInPanel: (type: 'zone' | 'map' | 'document') => void;
+  onTextGenerationComplete?: () => void;
 }
 
 export function AnalysisFoundMessage({ 
   enrichment, 
   zoneName,
-  onViewInPanel 
+  onViewInPanel,
+  onTextGenerationComplete 
 }: AnalysisFoundMessageProps) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [textGenerationComplete, setTextGenerationComplete] = useState(false);
+  const [showMapCard, setShowMapCard] = useState(false);
+  const [showDocumentCard, setShowDocumentCard] = useState(false);
 
   // Determine theme-aware logo path
   const logoSrc = resolvedTheme === 'dark' 
@@ -31,20 +37,43 @@ export function AnalysisFoundMessage({
     setMounted(true);
   }, []);
 
-  // Extract document data from enrichment
+  // Handle text generation completion
+  const handleTextGenerationComplete = () => {
+    setTextGenerationComplete(true);
+    if (onTextGenerationComplete) {
+      onTextGenerationComplete();
+    }
+    
+    // Show map card immediately after text completes
+    setTimeout(() => {
+      setShowMapCard(true);
+      
+      // Show document card 500ms later
+      setTimeout(() => {
+        setShowDocumentCard(true);
+      }, 500);
+    }, 100);
+  };
+
+  // Extract document and map data from enrichment
   const documentData = enrichment.data.documentData;
   const hasDocument = documentData && documentData.documentId;
+  const hasMap = enrichment.data.mapGeometry !== null && enrichment.data.mapGeometry !== undefined;
 
   // Determine artifact status
-  const artifactStatus: 'loading' | 'ready' | 'error' = 
+  const documentStatus: 'loading' | 'ready' | 'error' = 
     enrichment.progress.document === 'error' ? 'error' :
     enrichment.progress.document === 'success' && hasDocument ? 'ready' :
+    'loading';
+
+  const mapStatus: 'loading' | 'ready' | 'error' = 
+    enrichment.progress.map === 'error' ? 'error' :
+    enrichment.progress.map === 'success' && hasMap ? 'ready' :
     'loading';
 
   // Prepare document artifact data if available
   let documentArtifactData: DocumentArtifactData | undefined;
   if (documentData && documentData.documentId) {
-    // We need to fetch more details about the document, but for now use what we have
     documentArtifactData = {
       documentId: documentData.documentId,
       title: 'Règlement PLU',
@@ -59,7 +88,7 @@ export function AnalysisFoundMessage({
     <div
       className={cn(
         'flex gap-2 px-3 py-2 sm:px-4 sm:py-2.5',
-        'justify-start'
+        'justify-start animate-in fade-in duration-300'
       )}
       role="article"
       aria-label="Assistant analysis message"
@@ -90,30 +119,54 @@ export function AnalysisFoundMessage({
 
       {/* Message Content */}
       <div className="flex-1 min-w-0 max-w-4xl space-y-3">
-        {/* Message Text */}
+        {/* Message Text with Typewriter Effect */}
         <div
           className={cn(
             'max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 transition-all duration-200',
             'bg-white text-gray-900 shadow-sm border border-gray-200 hover:border-gray-300'
           )}
         >
-          <p className="text-sm sm:text-[15px] leading-relaxed">
-            {zoneName 
-              ? `Voici l'analyse concernant la zone ${zoneName}:`
-              : 'Voici l\'analyse concernant cette zone:'}
-          </p>
+          <div className="text-sm sm:text-[15px] leading-relaxed">
+            <TextGenerateEffect
+              words={zoneName 
+                ? `Voici l'analyse concernant la zone ${zoneName}:`
+                : 'Voici l\'analyse concernant cette zone:'}
+              className="font-normal text-sm sm:text-[15px] no-margin"
+              filter={true}
+              duration={0.5}
+              onComplete={handleTextGenerationComplete}
+            />
+          </div>
         </div>
 
-        {/* Inline Artifact Card */}
-        {hasDocument && (
-          <div className="max-w-[85%] sm:max-w-[75%]">
-            <InlineArtifactCard
-              type="document"
-              artifactId={documentData.documentId || ''}
-              status={artifactStatus}
-              data={documentArtifactData}
-              onViewInPanel={onViewInPanel}
-            />
+        {/* Inline Artifact Cards - Show sequentially after text generation */}
+        {textGenerationComplete && (
+          <div className="max-w-[85%] sm:max-w-[75%] space-y-3">
+            {/* Map artifact card */}
+            {hasMap && showMapCard && (
+              <div className="animate-in fade-in duration-300">
+                <InlineArtifactCard
+                  type="map"
+                  artifactId="map"
+                  status={mapStatus}
+                  data={undefined}
+                  onViewInPanel={onViewInPanel}
+                />
+              </div>
+            )}
+            
+            {/* Document artifact card */}
+            {hasDocument && showDocumentCard && (
+              <div className="animate-in fade-in duration-300">
+                <InlineArtifactCard
+                  type="document"
+                  artifactId={documentData.documentId || ''}
+                  status={documentStatus}
+                  data={documentArtifactData}
+                  onViewInPanel={onViewInPanel}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

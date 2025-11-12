@@ -9,6 +9,7 @@ export interface ArtifactState {
   data: ZoneArtifactData | MapArtifactData | DocumentArtifactData | null;
   error?: Error;
   timestamp: number;
+  renderingStatus?: 'pending' | 'rendering' | 'complete';
 }
 
 /**
@@ -125,15 +126,17 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       // Check if update actually changes anything to prevent unnecessary re-renders
       const newStatus = updates.status ?? currentArtifact?.status ?? 'loading';
       const newData = updates.data ?? currentArtifact?.data ?? null;
+      const newRenderingStatus = updates.renderingStatus ?? currentArtifact?.renderingStatus;
       
       // Deep equality check for data (simple JSON.stringify for now)
       const dataChanged = currentArtifact?.data !== newData && 
         JSON.stringify(currentArtifact?.data) !== JSON.stringify(newData);
       
       const statusChanged = currentArtifact?.status !== newStatus;
+      const renderingStatusChanged = currentArtifact?.renderingStatus !== newRenderingStatus;
       
       // If nothing changed, return the same state to prevent re-render
-      if (!statusChanged && !dataChanged && currentArtifact) {
+      if (!statusChanged && !dataChanged && !renderingStatusChanged && currentArtifact) {
         return state;
       }
       

@@ -1,5 +1,165 @@
 # Changelog
 
+## 2025-01-13 - Fix Artifact Rendering Status Updates (Critical Bug)
+
+### Fixed
+- **CRITICAL BUG**: `renderingStatus` updates were being blocked in `artifactStore`
+  - Problem: Early return in `updateArtifact` only checked `status` and `data` changes
+  - Result: When `renderingStatus` was updated to 'complete', it was ignored
+  - Impact: `isArtifactRendered()` always returned false, breaking step transitions
+  - Solution: Added `renderingStatusChanged` check to early return condition
+
+### Changed
+- **artifactStore** (`lib/stores/artifactStore.ts`):
+  - Fixed early return to check `renderingStatusChanged`
+  - Now properly updates `renderingStatus` when `handleMapRenderComplete` or `handleDocumentRenderComplete` are called
+
+- **useArtifactSync** (`lib/hooks/useArtifactSync.ts`):
+  - Added detailed logging to `isArtifactRendered` function
+  - Shows artifact existence, status, and renderingStatus for debugging
+
+### Impact
+- `isArtifactRendered()` now correctly returns true when artifacts finish rendering
+- Step transitions in LoadingAssistantMessage will now trigger properly
+- Final analysis message transition will work correctly
+- User will see proper sequential loading flow
+
+## 2025-01-13 - Add Debug Logging for Progressive Loading Flow
+
+### Added
+- **Comprehensive Logging**: Added detailed console logging to debug progressive loading issues
+  - LoadingAssistantMessage: Log all step condition checks (Step 1, 2, 3)
+  - MapArtifact: Log polygon rendering delay checks and geometry status
+  - Chat Page: Log enrichment status changes and transition conditions
+  - Render callbacks: Log when map and document rendering completes
+
+### Changed
+- **LoadingAssistantMessage Component** (`components/LoadingAssistantMessage.tsx`):
+  - Added console logs for each step's condition evaluation
+  - Logs show: loadingStage, isMapRendered, hasMapGeometry, progress states
+  - Helps identify which conditions are preventing step progression
+
+- **MapArtifact Component** (`components/MapArtifact.tsx`):
+  - Added detailed logging for polygon delay logic
+  - Logs geometry structure, coordinates, and render states
+  - Shows when polygon render is scheduled and triggered
+
+- **Chat Page** (`app/(app)/chat/[conversation_id]/page.tsx`):
+  - Enhanced transition logging with all relevant states
+  - Added check for `conversation.enrichment_status === 'completed'` as fallback
+  - Logs both `enrichment.status` and `conversation.enrichment_status`
+  - Shows document content status and render states
+
+### Fixed
+- **Enrichment Status Detection**: Now checks both `enrichment.status` and `conversation.enrichment_status`
+  - Handles case where enrichment completes but status doesn't update immediately
+  - Transition to final message now more reliable
+
+### Impact
+- Better visibility into the loading flow progression
+- Easier debugging of step transition issues
+- Can identify exactly which conditions are failing
+- Helps diagnose map polygon rendering problems
+
+## 2025-01-13 - Progressive Loading Flow with Sequential Transitions
+
+### Added
+- **Progressive Loading States**: Implemented three-step loading progression with proper timing
+  - Step 1: Map displays with marker → polygon appears → stays for 2s
+  - Step 2: Document tab opens with skeleton → stays for 1s → analysis fades in
+  - Step 3: Final message shows for 1s → fades out completely (including avatar)
+  - Final: AnalysisFoundMessage fades in with text effect → inline cards appear sequentially
+
+### Changed
+- **LoadingAssistantMessage Component** (`components/LoadingAssistantMessage.tsx`):
+  - Refactored to use state machine pattern for step progression
+  - Added opacity transitions for smooth message changes (avatar persists throughout)
+  - Implemented timing controls: Step 1 (2s), Step 2 (1s), Step 3 (1s before fade out)
+  - Added `isFadingOut` prop to trigger external fade out
+  - Message text fades in/out between steps while avatar remains visible
+
+- **AnalysisFoundMessage Component** (`components/AnalysisFoundMessage.tsx`):
+  - Added `onTextGenerationComplete` callback prop
+  - Implemented sequential card appearance: map card first, then document card (500ms delay)
+  - Added fade-in animation for the entire component
+  - Cards only appear after text generation completes
+
+- **TextGenerateEffect Component** (`components/ui/text-generate-effect.tsx`):
+  - Added `onComplete` callback to notify when text generation finishes
+  - Callback fires after animation promise resolves
+
+- **DocumentViewer Component** (`components/DocumentViewer.tsx`):
+  - Fixed scrolling issue by simplifying CSS structure
+  - Changed from nested `overflow-hidden` + `overflow-y-auto` to single `overflow-y-auto`
+  - Removed unnecessary wrapper div that was blocking scroll
+
+- **Chat Page** (`app/(app)/chat/[conversation_id]/page.tsx`):
+  - Added state management for loading/analysis message transitions
+  - Implemented automatic transition from loading to analysis message
+  - Document tab now switches in Step 2 (not Step 3) to show skeleton immediately
+  - Map artifact can now initialize with just coordinates (geometry is optional)
+  - Added `showFinalAnalysisMessage` and `loadingMessageFadingOut` state
+  - Transition triggers when enrichment completes and document is rendered
+
+### Fixed
+- **Avatar Persistence**: Avatar no longer disappears during loading transitions
+- **Document Scrolling**: Users can now scroll through long document content
+- **Timing Issues**: Each step now displays for appropriate duration before transitioning
+- **Map Display**: Map shows immediately with marker, then adds polygon when data arrives
+- **Tab Switching**: Document tab opens with skeleton (Step 2), not after analysis loads (Step 3)
+- **Card Sequencing**: Inline cards appear in order after text generation completes
+
+### Impact
+- Smoother, more professional loading experience with clear visual progression
+- Users can see each stage of the enrichment process
+- Better UX with appropriate timing that doesn't feel rushed
+- Persistent avatar provides visual continuity throughout all transitions
+- Document content is now fully accessible with proper scrolling
+
+## 2025-01-13 - Fix ChatMessageBubble Avatar to Use MWPLU Logo
+
+### Fixed
+- **ChatMessageBubble Component** (`components/ChatMessageBubble.tsx`): Replaced generic Bot icon with theme-aware MWPLU logo
+  - Now uses the same logo logic as `LoadingAssistantMessage` component
+  - Shows `/square-white-plu.svg` for dark theme
+  - Shows `/square-black-plu.svg` for light theme
+  - Uses `Avatar` component with proper fallback handling
+  - Handles SSR with `mounted` state to prevent hydration mismatches
+
+### Changed
+- Removed hardcoded `Bot` icon from lucide-react
+- Added `useTheme` hook from `next-themes` for theme detection
+- Added `useState` and `useEffect` for SSR-safe logo rendering
+- Avatar now matches the loading state avatar for consistency
+
+### Impact
+- Consistent branding across all assistant messages (loading and regular)
+- Theme-aware logo automatically adapts to user's theme preference
+- Better visual consistency in chat interface
+
+## 2025-01-13 - Fix Infinite Loop in Chat Page Auto-Open Panel
+
+### Fixed
+- **Chat Page** (`app/(app)/chat/[conversation_id]/page.tsx`): Fixed "Maximum update depth exceeded" error when sending new address in new chat
+  - Removed `artifactSync` object from `useEffect` dependency arrays (was causing infinite re-renders)
+  - Extracted stable methods (`setActiveTab`, `updateArtifact`) from `artifactSync` to use directly in dependencies
+  - Added `hasAutoOpenedPanelRef` ref to prevent multiple auto-opens of the right panel
+  - Reset ref when conversation changes to allow auto-open for new conversations
+  - Updated all `useEffect` hooks that used `artifactSync` to use extracted methods and values instead
+
+### Technical Details
+- The `artifactSync` object returned from `useArtifactSync` hook was being recreated on each render
+- Including it in dependency arrays caused infinite loops when `setIsPanelOpen(true)` triggered re-renders
+- Solution: Extract stable callbacks (`setActiveTab`, `updateArtifact`) which are wrapped in `useCallback` in the hook
+- Added ref guard to ensure panel auto-opens only once per conversation
+- Dependencies now use specific values (`artifacts.map`, `artifacts.document`, `artifactActiveTab`) instead of entire object
+
+### Impact
+- Eliminates runtime error when starting new chats with addresses
+- Prevents infinite re-render loops
+- Maintains functionality of auto-opening panel when coordinates are received
+- More stable and predictable component behavior
+
 ## 2025-01-13 - Add Delete Conversation Feature
 
 ### Added

@@ -46,6 +46,11 @@ export interface UseArtifactSyncReturn {
    * Reset all artifacts for this conversation
    */
   resetArtifacts: () => void;
+
+  /**
+   * Check if an artifact is fully rendered (status 'ready' AND renderingStatus 'complete')
+   */
+  isArtifactRendered: (type: 'zone' | 'map' | 'document') => boolean;
 }
 
 /**
@@ -137,6 +142,31 @@ export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
     initializeConversation(conversationId);
   }, [conversationId, resetConversation, initializeConversation]);
 
+  // Check if artifact is fully rendered
+  const handleIsArtifactRendered = useCallback(
+    (type: 'zone' | 'map' | 'document'): boolean => {
+      const artifact = artifacts[type];
+      
+      console.log(`[ARTIFACT_SYNC] isArtifactRendered check for ${type}:`, {
+        exists: !!artifact,
+        status: artifact?.status,
+        renderingStatus: artifact?.renderingStatus
+      });
+      
+      if (!artifact) return false;
+      
+      // Artifact is rendered if status is 'ready' AND renderingStatus is 'complete'
+      const isRendered = (
+        artifact.status === 'ready' &&
+        artifact.renderingStatus === 'complete'
+      );
+      
+      console.log(`[ARTIFACT_SYNC] ${type} isRendered:`, isRendered);
+      return isRendered;
+    },
+    [artifacts]
+  );
+
   return {
     artifacts,
     activeTab,
@@ -144,5 +174,6 @@ export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
     updateArtifact: handleUpdateArtifact,
     openArtifactInPanel: handleOpenArtifactInPanel,
     resetArtifacts: handleResetArtifacts,
+    isArtifactRendered: handleIsArtifactRendered,
   };
 }
