@@ -1,5 +1,92 @@
 # Changelog
 
+## 2025-01-13 - Add Delete Conversation Feature
+
+### Added
+- **DeleteConversationDialog Component** (`components/DeleteConversationDialog.tsx`): New dialog component for deleting conversations
+  - Shows confirmation dialog before deletion
+  - Conditionally prompts to delete associated project if conversation is the only one in the project
+  - Two-button layout when project deletion is available: "Delete conversation only" and "Delete conversation and project"
+  - Single-button layout for regular conversation deletion
+  - Loading state prevents multiple clicks during deletion
+  - Disabled state during deletion prevents dialog closure
+- **Delete Icon on Conversations List** (`app/(app)/chats/page.tsx`): Added hover-revealed delete icon for each conversation
+  - Trash2 icon appears on hover with smooth transition
+  - Positioned on the right side of each conversation item
+  - Prevents navigation to conversation when clicking delete icon
+  - Icon uses muted colors (gray-400) that change to red on hover
+
+### Changed
+- **Chats Page** (`app/(app)/chats/page.tsx`): Enhanced with delete functionality
+  - Converted conversation items from simple buttons to containers with relative positioning
+  - Added state management for delete dialog (open/close, conversation to delete, project name)
+  - Added `checkIfOnlyConversationInProject` function to determine if conversation is the only one in its project
+  - Added `handleDeleteConversation` function to handle deletion logic
+  - Queries Supabase to count active conversations per project
+  - Deletes conversation from `v2_conversations` table
+  - Optionally deletes project from `v2_projects` table if requested
+  - Refreshes conversations list after successful deletion
+  - Shows toast notifications for success and error states
+  - Handles edge cases: conversations without project_id, error handling
+
+### Technical Details
+- Delete icon uses CSS group-hover pattern for visibility control
+- Icon opacity transitions from 0 to 100 on hover
+- Click event propagation is stopped on delete icon to prevent navigation
+- Database queries use existing RLS policies (users can delete their own conversations)
+- Project deletion only occurs if user explicitly confirms and conversation is the only one in project
+- Loading state prevents double-deletion and provides visual feedback
+- Error handling includes user-friendly toast messages
+
+### Impact
+- Users can now delete conversations directly from the conversations list
+- Smart project deletion prompt prevents orphaned projects
+- Improved UX with hover-revealed actions and clear confirmation dialogs
+- Proper error handling and loading states ensure reliable deletion process
+
+## 2025-01-13 - Address Conversation Loading UI with Progressive States
+
+### Added
+- **TextShimmer Component** (`components/ui/text-shimmer.tsx`): Created animated text shimmer effect component using framer-motion
+  - Supports custom colors, duration, and spread for shimmer animation
+  - Works in both light and dark themes
+  - Uses CSS custom properties for theme-aware colors
+- **LoadingAssistantMessage Component** (`components/LoadingAssistantMessage.tsx`): New component that displays during conversation enrichment
+  - Shows assistant avatar with theme-aware logo (square-black-plu.svg for light theme, square-white-plu.svg for dark theme)
+  - Displays progressive loading states with TextShimmer animation:
+    - Step 1: "Vérification de la zone concernée..." (when zones/municipality operations running)
+    - Step 2: "Récupération des documents sources..." (when document operation running)
+    - Step 3: "Récupération de l'analyse correspondante..." (when analysis processing)
+    - Fallback: "Vérification des données..." (if still loading)
+  - Automatically updates loading stage based on enrichment progress
+- **AnalysisFoundMessage Component** (`components/AnalysisFoundMessage.tsx`): Component displayed when enrichment completes and analysis is found
+  - Shows message: "Voici l'analyse concernant la zone [zone name]:" (or fallback text if zone name unavailable)
+  - Displays inline artifact card for the document
+  - Uses theme-aware logo in avatar
+  - Handles cases where zone name is not yet available
+
+### Changed
+- **Chat Page** (`app/(app)/chat/[conversation_id]/page.tsx`): Enhanced to show loading and analysis messages
+  - Added zone name extraction from research history and enrichment data
+  - Shows LoadingAssistantMessage when enrichment is in progress and conversation has address message
+  - Shows AnalysisFoundMessage when enrichment completes and document is found
+  - Added useEffect to fetch zone name when enrichment completes
+  - Zone name is extracted from zones table (description or name field)
+
+### Technical Details
+- Loading message only appears for new conversations (when enrichment_status is 'pending' or 'in_progress')
+- Uses enrichment progress from `useEnrichment` hook to determine current loading stage
+- Theme detection uses `next-themes` hook for logo selection
+- Zone name is fetched from database when available (from research_history.zone_id or enrichment.data.zoneId)
+- Smooth transition from loading message to analysis message when enrichment completes
+- Components handle error states gracefully
+
+### Impact
+- Users now see visual feedback during conversation enrichment with progressive loading states
+- Better UX with animated loading messages that indicate what's happening
+- Analysis results are displayed immediately when found, with inline artifact cards
+- Theme-aware logo ensures consistent branding across light and dark themes
+
 ## 2025-01-13 - Remove Non-Existent Analytics Tables
 
 ### Fixed

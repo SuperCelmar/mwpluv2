@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Search, X } from "lucide-react";
+import { MessageSquare, Search, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DeleteConversationDialog } from "@/components/DeleteConversationDialog";
+import { toast } from "@/hooks/use-toast";
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -18,6 +20,10 @@ export default function ChatsPage() {
   const [loading, setLoading] = useState(true);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<V2Conversation | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     checkAuthAndLoadConversations();
@@ -133,6 +139,145 @@ export default function ChatsPage() {
     router.push(`/chat/${conversationId}`);
   };
 
+  const checkIfOnlyConversationInProject = async (
+    conversationId: string,
+    projectId: string | null
+  ): Promise<{ isOnly: boolean; projectName: string | null }> => {
+    if (!projectId) {
+      return { isOnly: false, projectName: null };
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return { isOnly: false, projectName: null };
+      }
+
+      // Count active conversations with same project_id
+      const { count, error: countError } = await supabase
+        .from('v2_conversations')
+        .select('*', { count: 'exact', head: true })
+        .eq('project_id', projectId)
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      if (countError) {
+        console.error('Error counting conversations:', countError);
+        return { isOnly: false, projectName: null };
+      }
+
+      // If count is 1, this is the only conversation in the project
+      if (count === 1) {
+        // Fetch project name
+        const { data: project, error: projectError } = await supabase
+          .from('v2_projects')
+          .select('name')
+          .eq('id', projectId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (projectError) {
+          console.error('Error fetching project:', projectError);
+          return { isOnly: true, projectName: null };
+        }
+
+        return { isOnly: true, projectName: project?.name || 'Sans nom' };
+      }
+
+      return { isOnly: false, projectName: null };
+    } catch (error) {
+      console.error('Error checking if only conversation:', error);
+      return { isOnly: false, projectName: null };
+    }
+  };
+
+  const handleDeleteClick = async (e: React.MouseEvent, conversation: V2Conversation) => {
+    e.stopPropagation(); // Prevent navigation to conversation
+    
+    const { isOnly, projectName: name } = await checkIfOnlyConversationInProject(
+      conversation.id,
+      conversation.project_id
+    );
+
+    setConversationToDelete(conversation);
+    setProjectName(isOnly ? name : null);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConversation = async (alsoDeleteProject: boolean) => {
+    if (!conversationToDelete) return;
+
+    setDeleting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: 'Erreur',
+          description: 'Vous devez être connecté pour supprimer une conversation.',
+          variant: 'destructive',
+        });
+        setDeleting(false);
+        return;
+      }
+
+      // Delete conversation
+      const { error: convError } = await supabase
+        .from('v2_conversations')
+        .delete()
+        .eq('id', conversationToDelete.id)
+        .eq('user_id', user.id);
+
+      if (convError) {
+        throw convError;
+      }
+
+      // Delete project if requested and conversation has a project_id
+      if (alsoDeleteProject && conversationToDelete.project_id) {
+        const { error: projectError } = await supabase
+          .from('v2_projects')
+          .delete()
+          .eq('id', conversationToDelete.project_id)
+          .eq('user_id', user.id);
+
+        if (projectError) {
+          console.error('Error deleting project:', projectError);
+          toast({
+            title: 'Conversation supprimée',
+            description: 'La conversation a été supprimée, mais une erreur est survenue lors de la suppression du projet.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Suppression réussie',
+            description: 'La conversation et le projet ont été supprimés.',
+          });
+        }
+      } else {
+        toast({
+          title: 'Suppression réussie',
+          description: 'La conversation a été supprimée.',
+        });
+      }
+
+      // Refresh conversations list
+      await loadConversations();
+      
+      // Close dialog
+      setDeleteDialogOpen(false);
+      setConversationToDelete(null);
+      setProjectName(null);
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Une erreur est survenue lors de la suppression de la conversation.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <header className="border-b bg-white dark:bg-neutral-800 px-6 py-4 shrink-0">
@@ -190,39 +335,75 @@ export default function ChatsPage() {
                 const lastActivity = conversation.last_message_at || conversation.created_at;
 
                 return (
-                  <button
+                  <div
                     key={conversation.id}
-                    onClick={() => handleConversationClick(conversation.id)}
                     className={cn(
-                      "w-full text-left px-4 py-3 rounded-lg transition-all duration-150 border",
+                      "relative group w-full rounded-lg transition-all duration-150 border",
                       isActive
                         ? "bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
                         : "hover:bg-neutral-50 dark:hover:bg-neutral-800 border-transparent hover:border-neutral-200 dark:hover:border-neutral-700"
                     )}
                   >
-                    <div className="flex flex-col gap-1">
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
-                        {convTitle}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatDistanceToNow(new Date(lastActivity), {
-                          addSuffix: true,
-                          locale: fr,
-                        })}
-                      </p>
-                      {conversation.context_metadata?.initial_address && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-1">
-                          {conversation.context_metadata.initial_address}
+                    <button
+                      onClick={() => handleConversationClick(conversation.id)}
+                      className="w-full text-left px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate pr-8">
+                          {convTitle}
                         </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {formatDistanceToNow(new Date(lastActivity), {
+                            addSuffix: true,
+                            locale: fr,
+                          })}
+                        </p>
+                        {conversation.context_metadata?.initial_address && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-1">
+                            {conversation.context_metadata.initial_address}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteClick(e, conversation)}
+                      disabled={deleting}
+                      className={cn(
+                        "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all duration-150",
+                        "opacity-0 group-hover:opacity-100",
+                        "text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-500",
+                        "hover:bg-red-50 dark:hover:bg-red-950/20",
+                        deleting && "opacity-50 cursor-not-allowed"
                       )}
-                    </div>
-                  </button>
+                      aria-label="Supprimer la conversation"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
           )}
         </div>
       </ScrollArea>
+      <DeleteConversationDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setDeleteDialogOpen(false);
+            setConversationToDelete(null);
+            setProjectName(null);
+          }
+        }}
+        conversationName={
+          conversationToDelete?.title || 
+          conversationToDelete?.context_metadata?.initial_address || 
+          'Conversation'
+        }
+        projectName={projectName}
+        onConfirm={handleDeleteConversation}
+        deleting={deleting}
+      />
     </>
   );
 }

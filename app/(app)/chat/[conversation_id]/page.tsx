@@ -12,6 +12,8 @@ import { Loader2 } from 'lucide-react';
 import { ConversationBreadcrumb } from '@/components/ConversationBreadcrumb';
 import { RenameConversationDialog } from '@/components/RenameConversationDialog';
 import { DeleteConversationDialog } from '@/components/DeleteProjectDialog';
+import { LoadingAssistantMessage } from '@/components/LoadingAssistantMessage';
+import { AnalysisFoundMessage } from '@/components/AnalysisFoundMessage';
 
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
@@ -25,6 +27,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [zoneName, setZoneName] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Use enrichment hook for background enrichment
@@ -46,6 +49,28 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       }, 100);
     }
   }, [messages]);
+
+  // Update zone name when enrichment completes
+  useEffect(() => {
+    const fetchZoneName = async () => {
+      if (enrichment.status === 'complete' && enrichment.data.zoneId && !zoneName) {
+        const { data: zoneData } = await supabase
+          .from('zones')
+          .select('description, name')
+          .eq('id', enrichment.data.zoneId)
+          .maybeSingle();
+        
+        if (zoneData) {
+          const extractedZoneName = zoneData.description || zoneData.name || '';
+          if (extractedZoneName) {
+            setZoneName(extractedZoneName);
+          }
+        }
+      }
+    };
+
+    fetchZoneName();
+  }, [enrichment.status, enrichment.data.zoneId, zoneName]);
 
   const checkAuthAndLoadConversation = async () => {
     console.log('[CHAT_PAGE] Checking authentication and loading conversation');
@@ -195,6 +220,23 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       if (research) {
         console.log('[CHAT_PAGE] Research context loaded, research_id:', research.id);
         setResearchContext(research);
+        
+        // Try to extract zone name from research history
+        if (research.zone_id) {
+          // Fetch zone name from database
+          const { data: zoneData } = await supabase
+            .from('zones')
+            .select('description, name')
+            .eq('id', research.zone_id)
+            .maybeSingle();
+          
+          if (zoneData) {
+            const extractedZoneName = zoneData.description || zoneData.name || '';
+            if (extractedZoneName) {
+              setZoneName(extractedZoneName);
+            }
+          }
+        }
       }
 
       console.log('[CHAT_PAGE] loadConversation completed successfully');
@@ -498,6 +540,31 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                 userId={message.role === 'user' ? userId : null}
               />
             ))}
+          
+          {/* Show loading message when enrichment is in progress and this is a new conversation */}
+          {conversation && 
+           (conversation.enrichment_status === 'pending' || conversation.enrichment_status === 'in_progress') &&
+           enrichment.status === 'enriching' &&
+           messages.length > 0 &&
+           messages.some(msg => msg.message_type === 'address_search') && (
+            <LoadingAssistantMessage enrichment={enrichment} />
+          )}
+
+          {/* Show analysis found message when enrichment completes and document is found */}
+          {conversation &&
+           enrichment.status === 'complete' &&
+           enrichment.data.documentData &&
+           enrichment.data.documentData.documentId &&
+           !messages.some(msg => msg.role === 'assistant' && msg.message.includes('Voici l\'analyse')) && (
+            <AnalysisFoundMessage
+              enrichment={enrichment}
+              zoneName={zoneName || ''}
+              onViewInPanel={(type) => {
+                // TODO: Implement panel opening logic
+                console.log('[CHAT_PAGE] View in panel:', type);
+              }}
+            />
+          )}
           
           {/* AI loading icon below first message */}
           {sendingMessage && messages.length > 0 && (
