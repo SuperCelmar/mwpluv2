@@ -1,5 +1,13 @@
 # Changelog
 
+## 2025-11-12 - Fixed Logo Missing on Chat Conversation Page Sidebar
+
+### Fixed
+- **AppSidebar component** (`components/AppSidebar.tsx`): Fixed logo not displaying when sidebar is open on chat conversation pages
+  - Removed `isChatConversationPage` check that was preventing logo from showing
+  - Logo now displays consistently on all pages when sidebar is open
+  - Removed unused `pathname` variable and `usePathname` import
+
 ## 2025-01-XX - Breadcrumb Header for Chat Conversations
 
 ### Added

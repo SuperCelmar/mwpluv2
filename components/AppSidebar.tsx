@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Sidebar, SidebarBody, SidebarLink, Logo, SidebarToggle, RecentConversations } from "@/components/ui/sidebar";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, MessageSquare, Folder, User, Settings, LogOut, Sun, Moon, Monitor } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import {
@@ -21,14 +21,10 @@ import { cn } from "@/lib/utils";
 
 export function AppSidebar() {
   const router = useRouter();
-  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [mounted, setMounted] = useState(false);
-
-  // Hide logo on chat conversation pages
-  const isChatConversationPage = pathname?.startsWith('/chat/') && pathname !== '/chat' && pathname !== '/chats';
 
   useEffect(() => {
     const getUser = async () => {
@@ -72,7 +68,7 @@ export function AppSidebar() {
     <Sidebar open={open} setOpen={setOpen}>
         <SidebarBody className="justify-between gap-10">
           <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
-            {open && !isChatConversationPage ? <Logo /> : <SidebarToggle />}
+            {open ? <Logo /> : <SidebarToggle />}
             <div className="mt-8 flex flex-col gap-2">
               {links.map((link, idx) => (
                 <SidebarLink key={idx} link={link} />
