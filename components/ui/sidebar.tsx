@@ -10,6 +10,7 @@ import { supabase, V2Conversation } from "@/lib/supabase";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useRouter, usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 
 interface Links {
   label: string;
@@ -326,6 +327,15 @@ export const RecentConversations = () => {
 // Logo Components
 export const Logo = () => {
   const { open, setOpen } = useSidebar();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDarkMode = mounted && resolvedTheme === 'dark';
+
   return (
     <div className="flex items-center gap-2">
       <button
@@ -340,7 +350,7 @@ export const Logo = () => {
         className="font-normal flex items-center text-sm text-black dark:text-white relative z-20"
       >
         <Image
-          src="/MWPLU.svg"
+          src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
           alt="MWPLU"
           width={120}
           height={40}
@@ -353,13 +363,22 @@ export const Logo = () => {
 };
 
 export const LogoIcon = () => {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDarkMode = mounted && resolvedTheme === 'dark';
+
   return (
     <Link
       href="/"
       className="font-normal flex items-center justify-center text-sm text-black dark:text-white py-1 relative z-20 w-full"
     >
       <Image
-        src="/MWPLU.svg"
+        src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
         alt="MWPLU"
         width={40}
         height={40}

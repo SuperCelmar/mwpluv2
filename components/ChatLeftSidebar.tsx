@@ -20,6 +20,7 @@ import { supabase, V2Conversation } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useTheme } from 'next-themes';
 
 interface ChatLeftSidebarProps {
   onNewConversation: () => void;
@@ -28,13 +29,21 @@ interface ChatLeftSidebarProps {
 export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
   const [conversations, setConversations] = useState<V2Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     loadConversations();
   }, []);
+
+  const isDarkMode = mounted && resolvedTheme === 'dark';
 
   const getCurrentConversationId = () => {
     const match = pathname?.match(/\/chat\/([^\/]+)/);
@@ -225,7 +234,7 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                     </svg>
                   </Button>
                   <Image
-                    src="/MWPLU.svg"
+                    src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
                     alt="MWPLU"
                     width={120}
                     height={40}

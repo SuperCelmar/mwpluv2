@@ -10,9 +10,19 @@ import { useChatStore } from '@/lib/store';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
 
 export function LeftSidebar() {
   const { conversations, currentConversationId, setCurrentConversationId } = useChatStore();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDarkMode = mounted && resolvedTheme === 'dark';
 
   const handleNewConversation = () => {
     setCurrentConversationId(null);
@@ -23,7 +33,7 @@ export function LeftSidebar() {
       <div className="p-16 space-y-16">
         <div className="flex items-center justify-between">
           <Image
-            src="/MWPLU.svg"
+            src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
             alt="MWPLU"
             width={120}
             height={40}

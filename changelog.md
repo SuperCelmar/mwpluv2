@@ -1,5 +1,55 @@
 # Changelog
 
+## 2025-01-XX - Profile Dropdown Positioning Fix
+
+### Fixed
+- **Profile dropdown menu positioning** (`components/AppSidebar.tsx`): Fixed dropdown menu positioning when sidebar is expanded
+  - Changed dropdown to appear above the profile row (`side="top"`) when sidebar is open, instead of extending to the right edge
+  - Added conditional z-index (`z-[100]`) to ensure dropdown appears above profile row
+  - Maintains original behavior (`side="right"`) when sidebar is collapsed for better space management
+
+### Technical Details
+- Conditionally sets `side` prop: `"top"` when sidebar is open, `"right"` when collapsed
+- Uses `cn()` utility to conditionally apply `z-[100]` class based on `open` state
+- Dropdown now appears directly above the profile button row, improving space management within the sidebar
+
+## 2025-01-XX - Theme-Aware Logo Implementation
+
+### Added
+- **Theme-aware logo switching**: All logo instances now automatically switch between dark and white versions based on the current theme
+  - White logo (`MWPLU_white.svg`) displays in dark mode
+  - Dark logo (`MWPLU.svg`) displays in light mode
+  - Updated components:
+    - `components/ui/sidebar.tsx` - Logo and LogoIcon components
+    - `components/Navbar.tsx` - Navbar logo
+    - `components/ChatLeftSidebar.tsx` - Sidebar logo
+    - `components/plu/EmptyState.tsx` - Empty state logo
+    - `components/plu/LeftSidebar.tsx` - Left sidebar logo
+  - Uses `useTheme` hook from `next-themes` with `resolvedTheme` to detect dark mode
+  - Includes `mounted` state check to prevent hydration mismatches
+
+### Technical Details
+- All logo components now use conditional rendering: `src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}`
+- Theme detection pattern: `const isDarkMode = mounted && resolvedTheme === 'dark'`
+- Ensures consistent logo appearance across all pages and components
+
+## 2025-11-12 - Theme Selector Fix
+
+### Fixed
+- **Theme selector functionality** (`components/ThemeProvider.tsx`): Fixed theme switching (light/dark/system) not working
+  - Added required `next-themes` configuration props:
+    - `attribute="class"` - Enables `.dark` class toggling on HTML element
+    - `defaultTheme="system"` - Defaults to system preference
+    - `enableSystem` - Enables system theme detection
+    - `disableTransitionOnChange={false}` - Allows smooth theme transitions
+  - Theme buttons in AppSidebar and Settings page now properly switch themes
+  - Theme preference is now persisted and applied correctly
+
+### Technical Details
+- The ThemeProvider was missing critical configuration props required by `next-themes`
+- Without `attribute="class"`, the library couldn't apply the `.dark` class to the HTML element
+- System theme detection now works correctly when "system" mode is selected
+
 ## 2025-01-XX - Sidebar Icon Alignment Fix
 
 ### Fixed

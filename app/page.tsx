@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
-import { InitialAddressInput } from '@/components/InitialAddressInput';
+import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { AppSidebar } from '@/components/AppSidebar';
-import { AddressSuggestion } from '@/lib/address-api';
+import { AddressSuggestion, searchAddress } from '@/lib/address-api';
 import { createLightweightConversation } from '@/lib/supabase/queries';
 import { toast } from '@/hooks/use-toast';
 
@@ -14,6 +14,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
+  const [addressQuery, setAddressQuery] = useState('');
 
   useEffect(() => {
     checkAuth();
@@ -27,6 +31,27 @@ export default function Home() {
     }
     setUserId(user.id);
     setLoading(false);
+  };
+
+  const handleAddressInputChange = async (value: string) => {
+    setAddressQuery(value);
+    setSelectedAddress(null);
+    
+    if (value.length >= 3) {
+      const results = await searchAddress(value);
+      setAddressSuggestions(results);
+      setShowAddressSuggestions(results.length > 0);
+    } else {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+    }
+  };
+
+  const handleAddressSelect = (address: AddressSuggestion) => {
+    setSelectedAddress(address);
+    setAddressQuery(address.properties.label);
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
   };
 
   const handleAddressSubmit = async (address: AddressSuggestion) => {
@@ -122,14 +147,47 @@ export default function Home() {
     // Already on home page, no action needed
   };
 
+  const handleSend = async (message: string, files?: File[]) => {
+    // If we have a selected address, use it
+    if (selectedAddress) {
+      await handleAddressSubmit(selectedAddress);
+      return;
+    }
+
+    // Otherwise, try to find address from message or search for it
+    if (message.trim().length >= 3) {
+      const results = await searchAddress(message.trim());
+      if (results.length > 0) {
+        // Auto-select first result if it's a clear address match
+        await handleAddressSubmit(results[0]);
+        return;
+      }
+    }
+
+    // If no address found, show error
+    toast({
+      title: 'Adresse requise',
+      description: 'Veuillez sélectionner une adresse valide pour commencer.',
+      variant: 'destructive',
+    });
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-neutral-900">
       <AppSidebar />
-      <div className="flex-1 flex items-center justify-center">
-        <InitialAddressInput
-          onAddressSubmit={handleAddressSubmit}
-          disabled={sendingMessage}
-        />
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl">
+          <PromptInputBox
+            onSend={handleSend}
+            isLoading={sendingMessage}
+            placeholder="Entrez l'adresse de votre projet..."
+            enableAddressAutocomplete={true}
+            onAddressSelect={handleAddressSelect}
+            addressSuggestions={addressSuggestions}
+            showAddressSuggestions={showAddressSuggestions}
+            onAddressInputChange={handleAddressInputChange}
+          />
+        </div>
       </div>
     </div>
   );

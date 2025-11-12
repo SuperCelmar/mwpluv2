@@ -24,6 +24,7 @@ export function AppSidebar() {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -31,6 +32,7 @@ export function AppSidebar() {
       setUser(user);
     };
     getUser();
+    setMounted(true);
   }, []);
 
   const handleLogout = async () => {
@@ -105,7 +107,11 @@ export function AppSidebar() {
                   </AnimatePresence>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="right" className="w-56">
+              <DropdownMenuContent 
+                align={open ? "start" : "end"}
+                side={open ? "top" : "right"}
+                className={cn(open && "z-[100]")}
+              >
                 <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push('/profile')}>
@@ -117,19 +123,47 @@ export function AppSidebar() {
                   Paramètres
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel>Thème</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => setTheme('light')}>
-                  <Sun className="mr-2 h-4 w-4" />
-                  Clair
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('dark')}>
-                  <Moon className="mr-2 h-4 w-4" />
-                  Sombre
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('system')}>
-                  <Monitor className="mr-2 h-4 w-4" />
-                  Système
-                </DropdownMenuItem>
+                <div className="px-2 py-1.5">
+                  <DropdownMenuLabel className="mb-2">Thème</DropdownMenuLabel>
+                  <div className="flex items-center gap-0 bg-secondary rounded-md p-1">
+                    <button
+                      onClick={() => setTheme('light')}
+                      className={cn(
+                        "flex items-center justify-center h-8 flex-1 rounded-sm transition-all",
+                        mounted && theme === 'light'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-label="Light mode"
+                    >
+                      <Sun className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setTheme('dark')}
+                      className={cn(
+                        "flex items-center justify-center h-8 flex-1 rounded-sm transition-all",
+                        mounted && theme === 'dark'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-label="Dark mode"
+                    >
+                      <Moon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setTheme('system')}
+                      className={cn(
+                        "flex items-center justify-center h-8 flex-1 rounded-sm transition-all",
+                        mounted && theme === 'system'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-label="System theme"
+                    >
+                      <Monitor className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-red-600 dark:text-red-400">
                   <LogOut className="mr-2 h-4 w-4" />

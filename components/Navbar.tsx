@@ -13,9 +13,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
 
 export function Navbar() {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDarkMode = mounted && resolvedTheme === 'dark';
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -26,7 +36,7 @@ export function Navbar() {
     <nav className="border-b bg-white">
       <div className="flex items-center justify-between px-6 py-4">
         <Image
-          src="/MWPLU.svg"
+          src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
           alt="MWPLU"
           width={120}
           height={40}

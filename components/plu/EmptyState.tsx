@@ -1,14 +1,25 @@
 'use client';
 
 import Image from 'next/image';
+import { useTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
 
 export function EmptyState() {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDarkMode = mounted && resolvedTheme === 'dark';
+
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 text-center">
       <div className="mb-8">
         <div className="flex justify-center mb-4">
           <Image
-            src="/MWPLU.svg"
+            src={isDarkMode ? "/MWPLU_white.svg" : "/MWPLU.svg"}
             alt="MWPLU"
             width={240}
             height={80}

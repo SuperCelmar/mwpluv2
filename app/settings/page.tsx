@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Settings as SettingsIcon, Sun, Moon, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -64,29 +64,44 @@ export default function SettingsPage() {
               <div className="space-y-4">
                 <div>
                   <Label className="text-base font-medium mb-4 block">Thème</Label>
-                  <RadioGroup value={mounted ? theme : 'system'} onValueChange={setTheme}>
-                    <div className="flex items-center space-x-2 py-2">
-                      <RadioGroupItem value="light" id="light" />
-                      <Label htmlFor="light" className="flex items-center gap-2 cursor-pointer">
-                        <Sun className="h-4 w-4" />
-                        Clair
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 py-2">
-                      <RadioGroupItem value="dark" id="dark" />
-                      <Label htmlFor="dark" className="flex items-center gap-2 cursor-pointer">
-                        <Moon className="h-4 w-4" />
-                        Sombre
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 py-2">
-                      <RadioGroupItem value="system" id="system" />
-                      <Label htmlFor="system" className="flex items-center gap-2 cursor-pointer">
-                        <Monitor className="h-4 w-4" />
-                        Système
-                      </Label>
-                    </div>
-                  </RadioGroup>
+                  <div className="flex items-center gap-0 bg-secondary rounded-lg p-1 w-fit">
+                    <button
+                      onClick={() => setTheme('light')}
+                      className={cn(
+                        "flex items-center justify-center h-10 w-10 rounded-md transition-all",
+                        mounted && theme === 'light'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-label="Light mode"
+                    >
+                      <Sun className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => setTheme('dark')}
+                      className={cn(
+                        "flex items-center justify-center h-10 w-10 rounded-md transition-all",
+                        mounted && theme === 'dark'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-label="Dark mode"
+                    >
+                      <Moon className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => setTheme('system')}
+                      className={cn(
+                        "flex items-center justify-center h-10 w-10 rounded-md transition-all",
+                        mounted && theme === 'system'
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      aria-label="System theme"
+                    >
+                      <Monitor className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </CardContent>
