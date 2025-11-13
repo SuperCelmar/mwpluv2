@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { MapPin, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { searchAddress, AddressSuggestion } from '@/lib/address-api';
+import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 
 interface AddressInputProps {
@@ -14,31 +16,21 @@ interface AddressInputProps {
 
 export function AddressInput({ onAddressSelect, disabled }: AddressInputProps) {
   const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (query.length >= 3) {
-        setLoading(true);
-        const results = await searchAddress(query);
-        setSuggestions(results);
-        setShowSuggestions(true);
-        setLoading(false);
-      } else {
-        setSuggestions([]);
-        setShowSuggestions(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [query]);
+  
+  // Debounce the query input
+  const debouncedQuery = useDebounce(query, 300);
+  
+  // Fetch address suggestions using React Query
+  const { data: suggestions = [], isLoading: loading } = useQuery({
+    queryKey: ['address-search', debouncedQuery],
+    queryFn: () => searchAddress(debouncedQuery),
+    enabled: debouncedQuery.length >= 3,
+  });
+  
+  const showSuggestions = debouncedQuery.length >= 3 && (suggestions.length > 0 || loading);
 
   const handleSelect = (suggestion: AddressSuggestion) => {
     setQuery('');
-    setSuggestions([]);
-    setShowSuggestions(false);
     onAddressSelect(suggestion);
   };
 

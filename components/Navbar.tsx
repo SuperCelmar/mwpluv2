@@ -21,6 +21,7 @@ export function Navbar() {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
+  // useEffect: sync with external system (theme)
   useEffect(() => {
     setMounted(true);
   }, []);

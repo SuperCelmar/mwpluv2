@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import { Plus, MessageSquare, Folder, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,16 +32,11 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
   const pathname = usePathname();
   const { resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
-  const [conversations, setConversations] = useState<V2Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
+  // useEffect: sync with external system (theme)
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    loadConversations();
   }, []);
 
   const isDarkMode = mounted && resolvedTheme === 'dark';
@@ -50,31 +46,37 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
     return match ? match[1] : null;
   };
 
-  const loadConversations = async () => {
-    try {
+  // Fetch user using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      return user;
+    },
+  });
+
+  const userId = user?.id;
+
+  // Fetch conversations using React Query
+  const { data: conversations = [], isLoading: loading } = useQuery({
+    queryKey: ['conversations', userId],
+    queryFn: async () => {
+      if (!userId) return [];
 
       const { data, error } = await supabase
         .from('v2_conversations')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(20);
 
       if (error) throw error;
-
-      if (data) {
-        setConversations(data);
-      }
-    } catch (error) {
-      console.error('Error loading conversations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return data || [];
+    },
+    enabled: !!userId,
+  });
 
   const handleConversationClick = (conversationId: string) => {
     router.push(`/chat/${conversationId}`);
@@ -157,7 +159,7 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => {/* TODO: Open conversations panel */}}
+                    onClick={() => router.push('/chats')}
                     className="w-10 h-10 transition-all duration-150"
                     style={{ color: '#333333' }}
                     onMouseEnter={(e) => {
@@ -183,7 +185,7 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => {/* TODO: Open projects panel */}}
+                    onClick={() => router.push('/projects')}
                     className="w-10 h-10 transition-all duration-150"
                     style={{ color: '#333333' }}
                     onMouseEnter={(e) => {
@@ -265,6 +267,7 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                     variant="ghost"
                     className="w-full justify-start transition-all duration-150"
                     style={{ color: '#333333' }}
+                    onClick={() => router.push('/chats')}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F5F5F5'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
@@ -276,6 +279,7 @@ export function ChatLeftSidebar({ onNewConversation }: ChatLeftSidebarProps) {
                     variant="ghost"
                     className="w-full justify-start transition-all duration-150"
                     style={{ color: '#333333' }}
+                    onClick={() => router.push('/projects')}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F5F5F5'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >

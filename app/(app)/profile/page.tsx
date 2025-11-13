@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,26 +29,7 @@ import { getCachedProfile, setCachedProfile, clearCachedProfile } from "@/lib/ut
 export default function ProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [stats, setStats] = useState({
-    projectsCount: 0,
-    documentsCount: 0,
-    starredProjectsCount: 0,
-    conversationsCount: 0,
-  });
-  const [analytics, setAnalytics] = useState({
-    messageCount: 0,
-    totalCost: 0,
-    totalTokens: 0,
-    downloadsCount: 0,
-    starsCount: 0,
-    reviewsCount: 0,
-    commandsCount: 0,
-  });
-  const [lastSignInAt, setLastSignInAt] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
 
   // Form state
@@ -59,165 +41,172 @@ export default function ProfilePage() {
     phone: "",
   });
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  // Fetch user authentication using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return null;
+      }
+      return user;
+    },
+    retry: false,
+  });
 
-  const checkAuth = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) {
-      router.push("/login");
-      return;
-    }
-    setUser(authUser);
-    // Get last_sign_in_at from auth user
-    setLastSignInAt(authUser.last_sign_in_at || null);
-    
-    // Check localStorage first for cached profile
-    const cachedProfile = getCachedProfile(authUser.id);
+  const userId = user?.id;
+  const lastSignInAt = user?.last_sign_in_at || null;
+
+  // Get cached profile for initial data
+  const getInitialProfile = () => {
+    if (!userId) return undefined;
+    const cachedProfile = getCachedProfile(userId);
     if (cachedProfile) {
-      console.log("Profile loaded from cache:", cachedProfile);
-      
-      // Also check if avatar_url is missing but exists in avatar cache
+      // Check if avatar_url is missing but exists in avatar cache
       let profileToUse = { ...cachedProfile };
       if (!profileToUse.avatar_url) {
-        const cachedAvatarUrl = getCachedAvatarUrl(authUser.id);
+        const cachedAvatarUrl = getCachedAvatarUrl(userId);
         if (cachedAvatarUrl) {
-          console.log("Avatar URL found in avatar cache, updating profile cache:", cachedAvatarUrl);
           profileToUse.avatar_url = cachedAvatarUrl;
-          setCachedProfile(authUser.id, profileToUse);
+          setCachedProfile(userId, profileToUse);
         }
       }
-      
-      setProfile(profileToUse);
-      setFormData({
-        pseudo: profileToUse.pseudo || "",
-        first_name: profileToUse.first_name || "",
-        last_name: profileToUse.last_name || "",
-        full_name: profileToUse.full_name || "",
-        phone: profileToUse.phone || "",
-      });
-      // Still need to load stats and analytics, but show profile immediately
-      setLoading(false);
-      // Fetch fresh data in background to update cache and load stats/analytics
-      loadProfileData(authUser.id, true);
-    } else {
-      // No cache, fetch from database
-      console.log("No cached profile found, fetching from database");
-      await loadProfileData(authUser.id, false);
+      return profileToUse;
     }
+    return undefined;
   };
 
-  const loadProfileData = async (userId: string, backgroundUpdate: boolean = false) => {
-    if (!backgroundUpdate) {
-      setLoading(true);
-    }
-    try {
-      const [profileResult, statsResult, analyticsResult] = await Promise.all([
-        getUserProfile(userId),
-        getUserStatistics(userId),
-        getUserAnalytics(userId),
-      ]);
+  // Fetch profile using React Query
+  const { data: profile, isLoading: profileLoading } = useQuery({
+    queryKey: ['profile', userId],
+    queryFn: async () => {
+      if (!userId) return null;
 
-      if (profileResult.error) {
-        console.error("Profile fetch error:", profileResult.error);
-        if (!backgroundUpdate) {
-          throw profileResult.error;
-        }
-        return;
-      }
+      const { profile, error } = await getUserProfile(userId);
+      if (error) throw error;
 
-      if (profileResult.profile) {
-        console.log("Profile loaded from database:", profileResult.profile);
-        
-        // If avatar_url is null in database, check localStorage cache
-        // This handles the case where avatar was uploaded but database wasn't updated properly
-        let profileToUse = { ...profileResult.profile };
-        if (!profileToUse.avatar_url) {
-          const cachedAvatarUrl = getCachedAvatarUrl(userId);
-          if (cachedAvatarUrl) {
-            console.log("Avatar URL found in cache, using cached value:", cachedAvatarUrl);
-            profileToUse.avatar_url = cachedAvatarUrl;
-            // Try to update database with cached avatar URL
-            // This is a background operation, don't wait for it
-            updateUserProfile(userId, { avatar_url: cachedAvatarUrl }).catch((error) => {
-              console.warn("Failed to sync cached avatar URL to database:", error);
-            });
-          }
-        }
-        
-        // Cache the profile in localStorage (with potentially updated avatar_url)
-        setCachedProfile(userId, profileToUse);
-        
-        // Update state (only if not background update or if profile changed)
-        if (!backgroundUpdate || !profile || profile.id !== profileToUse.id) {
-          setProfile(profileToUse);
-          setFormData({
-            pseudo: profileToUse.pseudo || "",
-            first_name: profileToUse.first_name || "",
-            last_name: profileToUse.last_name || "",
-            full_name: profileToUse.full_name || "",
-            phone: profileToUse.phone || "",
-          });
-        }
-      } else {
-        console.warn("No profile found for user:", userId);
-        // Clear cache if profile doesn't exist
+      if (!profile) {
         clearCachedProfile();
-        if (!backgroundUpdate) {
-          toast({
-            title: "Profil introuvable",
-            description: "Votre profil n'a pas été trouvé. Veuillez contacter le support.",
-            variant: "destructive",
+        return null;
+      }
+
+      // If avatar_url is null in database, check localStorage cache
+      let profileToUse = { ...profile };
+      if (!profileToUse.avatar_url) {
+        const cachedAvatarUrl = getCachedAvatarUrl(userId);
+        if (cachedAvatarUrl) {
+          profileToUse.avatar_url = cachedAvatarUrl;
+          // Try to update database with cached avatar URL (background)
+          updateUserProfile(userId, { avatar_url: cachedAvatarUrl }).catch((error) => {
+            console.warn("Failed to sync cached avatar URL to database:", error);
           });
         }
       }
 
-      if (statsResult.error) {
-        console.error("Error loading statistics:", statsResult.error);
-      } else {
-        setStats({
-          projectsCount: statsResult.projectsCount,
-          documentsCount: statsResult.documentsCount,
-          starredProjectsCount: statsResult.starredProjectsCount,
-          conversationsCount: statsResult.conversationsCount,
+      // Cache the profile in localStorage
+      setCachedProfile(userId, profileToUse);
+      return profileToUse;
+    },
+    enabled: !!userId,
+    initialData: getInitialProfile,
+    onSuccess: (data) => {
+      if (data) {
+        setFormData({
+          pseudo: data.pseudo || "",
+          first_name: data.first_name || "",
+          last_name: data.last_name || "",
+          full_name: data.full_name || "",
+          phone: data.phone || "",
         });
       }
+    },
+  });
 
-      if (analyticsResult.error) {
-        console.error("Error loading analytics:", analyticsResult.error);
-      } else {
-        setAnalytics({
-          messageCount: analyticsResult.messageCount,
-          totalCost: analyticsResult.totalCost,
-          totalTokens: analyticsResult.totalTokens,
-          downloadsCount: analyticsResult.downloadsCount,
-          starsCount: analyticsResult.starsCount,
-          reviewsCount: analyticsResult.reviewsCount,
-          commandsCount: analyticsResult.commandsCount,
-        });
-      }
+  // Fetch statistics using React Query
+  const { data: stats = {
+    projectsCount: 0,
+    documentsCount: 0,
+    starredProjectsCount: 0,
+    conversationsCount: 0,
+  } } = useQuery({
+    queryKey: ['profile-stats', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const result = await getUserStatistics(userId);
+      if (result.error) throw result.error;
+      return {
+        projectsCount: result.projectsCount,
+        documentsCount: result.documentsCount,
+        starredProjectsCount: result.starredProjectsCount,
+        conversationsCount: result.conversationsCount,
+      };
+    },
+    enabled: !!userId,
+  });
 
-    } catch (error) {
-      console.error("Error loading profile:", error);
-      if (!backgroundUpdate) {
-        toast({
-          title: "Erreur",
-          description: "Impossible de charger les données du profil",
-          variant: "destructive",
+  // Fetch analytics using React Query
+  const { data: analytics = {
+    messageCount: 0,
+    totalCost: 0,
+    totalTokens: 0,
+    downloadsCount: 0,
+    starsCount: 0,
+    reviewsCount: 0,
+    commandsCount: 0,
+  } } = useQuery({
+    queryKey: ['profile-analytics', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const result = await getUserAnalytics(userId);
+      if (result.error) throw result.error;
+      return {
+        messageCount: result.messageCount,
+        totalCost: result.totalCost,
+        totalTokens: result.totalTokens,
+        downloadsCount: result.downloadsCount,
+        starsCount: result.starsCount,
+        reviewsCount: result.reviewsCount,
+        commandsCount: result.commandsCount,
+      };
+    },
+    enabled: !!userId,
+  });
+
+  const loading = profileLoading;
+
+  // Update profile mutation
+  const updateProfileMutation = useMutation({
+    mutationFn: async (updates: any) => {
+      if (!userId) throw new Error('User not authenticated');
+      const { profile: updatedProfile, error } = await updateUserProfile(userId, updates);
+      if (error) throw error;
+      return updatedProfile;
+    },
+    onSuccess: (updatedProfile) => {
+      if (updatedProfile && userId) {
+        // Update cache with new profile
+        setCachedProfile(userId, updatedProfile);
+        // Update cache with new display name
+        const newDisplayName = getDisplayNameFromProfile(updatedProfile);
+        setCachedDisplayName(userId, newDisplayName || '');
+        // Invalidate profile query to refresh
+        queryClient.setQueryData(['profile', userId], updatedProfile);
+        // Update form data
+        setFormData({
+          pseudo: updatedProfile.pseudo || "",
+          first_name: updatedProfile.first_name || "",
+          last_name: updatedProfile.last_name || "",
+          full_name: updatedProfile.full_name || "",
+          phone: updatedProfile.phone || "",
         });
       }
-    } finally {
-      if (!backgroundUpdate) {
-        setLoading(false);
-      }
-    }
-  };
+    },
+  });
 
   const handleSave = async () => {
     if (!user || !profile) return;
 
-    setSaving(true);
     try {
       // Compare current formData with original profile to only update changed fields
       const profileUpdates: any = {};
@@ -255,32 +244,10 @@ export default function ProfilePage() {
           title: "Aucune modification",
           description: "Aucun changement détecté",
         });
-        setSaving(false);
         return;
       }
 
-      const { profile: updatedProfile, error: profileError } = await updateUserProfile(
-        user.id,
-        profileUpdates
-      );
-
-      if (profileError) {
-        throw profileError;
-      }
-
-      if (updatedProfile) {
-        setProfile(updatedProfile);
-        // Update cache with new profile
-        if (user.id) {
-          setCachedProfile(user.id, updatedProfile);
-        }
-        // Update cache with new display name (this will notify all components automatically)
-        const newDisplayName = getDisplayNameFromProfile(updatedProfile);
-        if (user.id) {
-          // Always update cache, even if displayName is empty (to clear old cached value)
-          setCachedDisplayName(user.id, newDisplayName || '');
-        }
-      }
+      await updateProfileMutation.mutateAsync(profileUpdates);
 
       setEditing(false);
       toast({
@@ -295,8 +262,6 @@ export default function ProfilePage() {
         description: errorMessage,
         variant: "destructive",
       });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -314,13 +279,14 @@ export default function ProfilePage() {
   };
 
   const handleAvatarUpdate = (newAvatarUrl: string) => {
-    if (profile && user) {
+    if (profile && user && userId) {
       const updatedProfile = { ...profile, avatar_url: newAvatarUrl };
-      setProfile(updatedProfile);
       // Update localStorage cache for avatar
-      setCachedAvatarUrl(user.id, newAvatarUrl);
+      setCachedAvatarUrl(userId, newAvatarUrl);
       // Update full profile cache
-      setCachedProfile(user.id, updatedProfile);
+      setCachedProfile(userId, updatedProfile);
+      // Update React Query cache
+      queryClient.setQueryData(['profile', userId], updatedProfile);
     }
   };
 
@@ -458,12 +424,12 @@ export default function ProfilePage() {
 
             {editing && (
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={handleCancel} disabled={saving}>
+                <Button variant="outline" onClick={handleCancel} disabled={updateProfileMutation.isPending}>
                   <X className="h-4 w-4 mr-2" />
                   Annuler
                 </Button>
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? (
+                <Button onClick={handleSave} disabled={updateProfileMutation.isPending}>
+                  {updateProfileMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Enregistrement...

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,47 +35,72 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [user, setUser] = useState<any>(null);
   const [passwordData, setPasswordData] = useState({
     current: "",
     new: "",
     confirm: "",
   });
 
-  useEffect(() => {
-    checkAuth();
-    setMounted(true);
-  }, []);
-
-  const checkAuth = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) {
-      router.push("/login");
-      return;
-    }
-    setUser(authUser);
-    await loadSettings(authUser.id);
-  };
-
-  const loadSettings = async (userId: string) => {
-    try {
-      const { profile, error } = await getUserProfile(userId);
-      if (error) {
-        throw error;
+  // Fetch user authentication using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return null;
       }
-    } catch (error) {
+      return user;
+    },
+    retry: false,
+  });
+
+  const userId = user?.id;
+
+  // Fetch profile using React Query
+  const { isLoading: loading } = useQuery({
+    queryKey: ['profile', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { profile, error } = await getUserProfile(userId);
+      if (error) throw error;
+      return profile;
+    },
+    enabled: !!userId,
+    onError: (error) => {
       console.error("Error loading profile:", error);
       toast({
         title: "Erreur",
         description: "Impossible de charger le profil",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+  });
+
+  // Password change mutation
+  const passwordChangeMutation = useMutation({
+    mutationFn: async (newPassword: string) => {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Succès",
+        description: "Mot de passe modifié avec succès",
+      });
+      setPasswordData({ current: "", new: "", confirm: "" });
+    },
+    onError: (error: any) => {
+      console.error("Error changing password:", error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de modifier le mot de passe",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handlePasswordChange = async () => {
     if (passwordData.new !== passwordData.confirm) {
@@ -95,33 +121,13 @@ export default function SettingsPage() {
       return;
     }
 
-    setSaving(true);
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.new,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Succès",
-        description: "Mot de passe modifié avec succès",
-      });
-
-      setPasswordData({ current: "", new: "", confirm: "" });
-    } catch (error: any) {
-      console.error("Error changing password:", error);
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de modifier le mot de passe",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
+    await passwordChangeMutation.mutateAsync(passwordData.new);
   };
+
+  // useEffect: sync with external system (theme)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
 
   if (loading) {
@@ -214,8 +220,8 @@ export default function SettingsPage() {
                         placeholder="••••••••"
                       />
                     </div>
-                    <Button onClick={handlePasswordChange} disabled={saving}>
-                      {saving ? (
+                    <Button onClick={handlePasswordChange} disabled={passwordChangeMutation.isPending}>
+                      {passwordChangeMutation.isPending ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Modification...

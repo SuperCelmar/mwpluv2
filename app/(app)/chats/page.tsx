@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, V2Conversation } from "@/lib/supabase";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
@@ -11,125 +12,160 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, Search, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DeleteConversationDialog } from "@/components/DeleteConversationDialog";
+import { useDebounce } from "@/hooks/useDebounce";
 import { toast } from "@/hooks/use-toast";
 
 export default function ChatsPage() {
   const router = useRouter();
-  const [conversations, setConversations] = useState<V2Conversation[]>([]);
-  const [allConversations, setAllConversations] = useState<V2Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<V2Conversation | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    checkAuthAndLoadConversations();
-  }, []);
-
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setConversations(allConversations);
-      return;
-    }
-
-    const searchConversations = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const query = searchQuery.trim().toLowerCase();
-        
-        // Search conversations by title and address
-        const titleMatches = allConversations.filter(conv => {
-          const title = (conv.title || "").toLowerCase();
-          const address = (conv.context_metadata?.initial_address || "").toLowerCase();
-          return title.includes(query) || address.includes(query);
-        });
-
-        // Search messages content and get unique conversation IDs
-        const { data: messagesData, error: messagesError } = await supabase
-          .from('v2_messages')
-          .select('conversation_id')
-          .eq('user_id', user.id)
-          .ilike('message', `%${query}%`);
-
-        if (messagesError) {
-          console.error('Error searching messages:', messagesError);
-        }
-
-        const messageConversationIds = new Set(
-          messagesData?.map(msg => msg.conversation_id) || []
-        );
-
-        // Get conversations that have matching messages
-        const messageMatches = allConversations.filter(conv => 
-          messageConversationIds.has(conv.id)
-        );
-
-        // Combine and deduplicate results
-        const allMatches = [...titleMatches, ...messageMatches];
-        const uniqueMatches = Array.from(
-          new Map(allMatches.map(conv => [conv.id, conv])).values()
-        );
-
-        // Sort by last_message_at
-        uniqueMatches.sort((a, b) => {
-          const aTime = a.last_message_at || a.created_at;
-          const bTime = b.last_message_at || b.created_at;
-          return new Date(bTime).getTime() - new Date(aTime).getTime();
-        });
-
-        setConversations(uniqueMatches);
-      } catch (error) {
-        console.error('Error searching conversations:', error);
-      }
-    };
-
-    // Debounce search
-    const timeoutId = setTimeout(() => {
-      searchConversations();
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery, allConversations]);
-
-  const checkAuthAndLoadConversations = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    await loadConversations();
-  };
-
-  const loadConversations = async () => {
-    try {
+  // Fetch user authentication using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        router.push('/login');
+        return null;
+      }
+      return user;
+    },
+    retry: false,
+  });
+
+  const userId = user?.id;
+
+  // Fetch all conversations using React Query
+  const { data: allConversations = [], isLoading: loading } = useQuery({
+    queryKey: ['conversations', userId],
+    queryFn: async () => {
+      if (!userId) return [];
 
       const { data, error } = await supabase
         .from('v2_conversations')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      return data || [];
+    },
+    enabled: !!userId,
+  });
 
-      if (data) {
-        setAllConversations(data);
-        setConversations(data);
+  // Debounce search query
+  const debouncedSearchQuery = useDebounce(searchQuery.trim(), 300);
+
+  // Search conversations using React Query
+  const { data: searchResults } = useQuery({
+    queryKey: ['conversations-search', userId, debouncedSearchQuery],
+    queryFn: async () => {
+      if (!userId || !debouncedSearchQuery) return [];
+
+      const query = debouncedSearchQuery.toLowerCase();
+      
+      // Search conversations by title and address
+      const titleMatches = allConversations.filter(conv => {
+        const title = (conv.title || "").toLowerCase();
+        const address = (conv.context_metadata?.initial_address || "").toLowerCase();
+        return title.includes(query) || address.includes(query);
+      });
+
+      // Search messages content and get unique conversation IDs
+      const { data: messagesData, error: messagesError } = await supabase
+        .from('v2_messages')
+        .select('conversation_id')
+        .eq('user_id', userId)
+        .ilike('message', `%${query}%`);
+
+      if (messagesError) {
+        console.error('Error searching messages:', messagesError);
       }
-    } catch (error) {
-      console.error('Error loading conversations:', error);
-    } finally {
-      setLoading(false);
+
+      const messageConversationIds = new Set(
+        messagesData?.map(msg => msg.conversation_id) || []
+      );
+
+      // Get conversations that have matching messages
+      const messageMatches = allConversations.filter(conv => 
+        messageConversationIds.has(conv.id)
+      );
+
+      // Combine and deduplicate results
+      const allMatches = [...titleMatches, ...messageMatches];
+      const uniqueMatches = Array.from(
+        new Map(allMatches.map(conv => [conv.id, conv])).values()
+      );
+
+      // Sort by last_message_at
+      uniqueMatches.sort((a, b) => {
+        const aTime = a.last_message_at || a.created_at;
+        const bTime = b.last_message_at || b.created_at;
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+
+      return uniqueMatches;
+    },
+    enabled: !!userId && !!debouncedSearchQuery && debouncedSearchQuery.length > 0,
+  });
+
+  // Compute displayed conversations (search results or all conversations)
+  const conversations = useMemo(() => {
+    if (debouncedSearchQuery) {
+      return searchResults || [];
     }
-  };
+    return allConversations;
+  }, [debouncedSearchQuery, searchResults, allConversations]);
+
+  // Delete conversation mutation
+  const deleteMutation = useMutation({
+    mutationFn: async ({ conversationId, alsoDeleteProject }: { conversationId: string; alsoDeleteProject: boolean }) => {
+      if (!userId) throw new Error('User not authenticated');
+
+      // Delete conversation
+      const { error: convError } = await supabase
+        .from('v2_conversations')
+        .delete()
+        .eq('id', conversationId)
+        .eq('user_id', userId);
+
+      if (convError) throw convError;
+
+      // Delete project if requested
+      if (alsoDeleteProject && conversationToDelete?.project_id) {
+        const { error: projectError } = await supabase
+          .from('v2_projects')
+          .delete()
+          .eq('id', conversationToDelete.project_id)
+          .eq('user_id', userId);
+
+        if (projectError) {
+          console.error('Error deleting project:', projectError);
+          throw new Error('Failed to delete project');
+        }
+      }
+    },
+    onSuccess: () => {
+      // Invalidate conversations query to refresh list
+      queryClient.invalidateQueries({ queryKey: ['conversations', userId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-search', userId] });
+      
+      // Dispatch event to refresh sidebar conversations without animations
+      window.dispatchEvent(new CustomEvent('conversation:deleted'));
+      
+      // Close dialog
+      setDeleteDialogOpen(false);
+      setConversationToDelete(null);
+      setProjectName(null);
+    },
+  });
 
   const clearSearch = () => {
     setSearchQuery("");
@@ -207,77 +243,27 @@ export default function ChatsPage() {
   const handleDeleteConversation = async (alsoDeleteProject: boolean) => {
     if (!conversationToDelete) return;
 
-    setDeleting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          title: 'Erreur',
-          description: 'Vous devez être connecté pour supprimer une conversation.',
-          variant: 'destructive',
-        });
-        setDeleting(false);
-        return;
-      }
+      await deleteMutation.mutateAsync({
+        conversationId: conversationToDelete.id,
+        alsoDeleteProject,
+      });
 
-      // Delete conversation
-      const { error: convError } = await supabase
-        .from('v2_conversations')
-        .delete()
-        .eq('id', conversationToDelete.id)
-        .eq('user_id', user.id);
-
-      if (convError) {
-        throw convError;
-      }
-
-      // Delete project if requested and conversation has a project_id
-      if (alsoDeleteProject && conversationToDelete.project_id) {
-        const { error: projectError } = await supabase
-          .from('v2_projects')
-          .delete()
-          .eq('id', conversationToDelete.project_id)
-          .eq('user_id', user.id);
-
-        if (projectError) {
-          console.error('Error deleting project:', projectError);
-          toast({
-            title: 'Conversation supprimée',
-            description: 'La conversation a été supprimée, mais une erreur est survenue lors de la suppression du projet.',
-            variant: 'destructive',
-          });
-        } else {
-          toast({
-            title: 'Suppression réussie',
-            description: 'La conversation et le projet ont été supprimés.',
-          });
-        }
-      } else {
-        toast({
-          title: 'Suppression réussie',
-          description: 'La conversation a été supprimée.',
-        });
-      }
-
-      // Refresh conversations list
-      await loadConversations();
-      
-      // Dispatch event to refresh sidebar conversations without animations
-      window.dispatchEvent(new CustomEvent('conversation:deleted'));
-      
-      // Close dialog
-      setDeleteDialogOpen(false);
-      setConversationToDelete(null);
-      setProjectName(null);
-    } catch (error) {
+      toast({
+        title: 'Suppression réussie',
+        description: alsoDeleteProject && conversationToDelete.project_id
+          ? 'La conversation et le projet ont été supprimés.'
+          : 'La conversation a été supprimée.',
+      });
+    } catch (error: any) {
       console.error('Error deleting conversation:', error);
       toast({
-        title: 'Erreur',
-        description: 'Une erreur est survenue lors de la suppression de la conversation.',
+        title: error.message?.includes('project') ? 'Conversation supprimée' : 'Erreur',
+        description: error.message?.includes('project')
+          ? 'La conversation a été supprimée, mais une erreur est survenue lors de la suppression du projet.'
+          : 'Une erreur est survenue lors de la suppression de la conversation.',
         variant: 'destructive',
       });
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -370,13 +356,13 @@ export default function ChatsPage() {
                     </button>
                     <button
                       onClick={(e) => handleDeleteClick(e, conversation)}
-                      disabled={deleting}
+                      disabled={deleteMutation.isPending}
                       className={cn(
                         "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all duration-150",
                         "opacity-0 group-hover:opacity-100",
                         "text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-500",
                         "hover:bg-red-50 dark:hover:bg-red-950/20",
-                        deleting && "opacity-50 cursor-not-allowed"
+                        deleteMutation.isPending && "opacity-50 cursor-not-allowed"
                       )}
                       aria-label="Supprimer la conversation"
                     >
@@ -405,7 +391,7 @@ export default function ChatsPage() {
         }
         projectName={projectName}
         onConfirm={handleDeleteConversation}
-        deleting={deleting}
+        deleting={deleteMutation.isPending}
       />
     </>
   );

@@ -1,5 +1,69 @@
 # Changelog
 
+## 2025-01-13 - Fixed Navigation Buttons in ChatLeftSidebar
+
+### Fixed
+- **ChatLeftSidebar Component** (`components/ChatLeftSidebar.tsx`): Fixed non-functional chat and project navigation buttons
+  - Chat icon button (collapsed state) now navigates to `/chats` page
+  - Project/Folder icon button (collapsed state) now navigates to `/projects` page
+  - Chat button (expanded state) now navigates to `/chats` page
+  - Projects button (expanded state) now navigates to `/projects` page
+  - Replaced TODO comments with actual navigation handlers using `router.push()`
+
+## 2025-01-13 - React Query Refactoring: Eliminate useEffect Misuse
+
+### Changed
+- **Complete refactoring to eliminate useEffect misuse across the codebase**:
+  - Replaced all data-fetching `useEffect` hooks with React Query (`useQuery` / `useMutation`)
+  - Moved derived state from `useEffect` to `useMemo` or render-time computation
+  - Added comments to legitimate `useEffect` hooks: `// useEffect: sync with external system` or `// useEffect: DOM manipulation`
+  - Preserved all functionality, types, and UI behavior
+
+- **Setup**:
+  - Created `lib/queryClient.ts` with QueryClient instance
+  - Added `QueryClientProvider` to `app/layout.tsx` wrapping the entire app
+  - Created `hooks/useDebounce.ts` for debouncing input fields (uses `useEffect` internally, which is acceptable)
+
+- **Refactored Pages**:
+  - `app/(app)/page.tsx`: User auth and address search now use React Query
+  - `app/(app)/chats/page.tsx`: Conversations list and search using React Query with debouncing
+  - `app/(app)/projects/page.tsx`: Projects list using React Query
+  - `app/(app)/profile/page.tsx`: Profile, stats, and analytics using React Query with localStorage caching
+  - `app/(app)/settings/page.tsx`: Profile and password change using React Query mutations
+  - `app/(app)/chat/[conversation_id]/page.tsx`: Complete refactoring - user, conversation, project, messages, research history all use React Query; message sending uses mutations
+
+- **Refactored Components**:
+  - `components/InitialAddressInput.tsx`: Address search with `useDebounce` + `useQuery`
+  - `components/AddressInput.tsx`: Address search with `useDebounce` + `useQuery`
+  - `components/AppSidebar.tsx`: User auth using React Query
+  - `components/settings/LoginHistoryTable.tsx`: Login history using React Query
+  - `components/ChatLeftSidebar.tsx`: Conversations list using React Query
+
+- **Legitimate useEffect hooks** (with comments):
+  - Auto-scroll in chat page: `// useEffect: DOM manipulation (auto-scroll)`
+  - Textarea auto-resize: `// useEffect: DOM manipulation (auto-resize textarea)`
+  - Theme sync: `// useEffect: sync with external system (theme)`
+  - LocalStorage sync: `// useEffect: sync with external system (localStorage)`
+  - Artifact state synchronization: `// useEffect: state synchronization (map/document artifact sync)`
+  - UI state transitions: `// useEffect: UI state transition (enrichment completion)`
+  - Panel auto-open: `// useEffect: UI behavior (auto-open panel)`
+
+### Technical Details
+- All React Query queries use proper `queryKey` formats: `['resource', id]` or `['resource', userId]`
+- Mutations invalidate related queries using `queryClient.invalidateQueries()`
+- Loading states use `isLoading` from React Query instead of manual `loading` state
+- Error handling uses React Query's built-in error states
+- Debouncing implemented via custom `useDebounce` hook (acceptable `useEffect` usage for timers)
+- Local storage caching integrated with React Query `initialData` and `onSuccess` callbacks
+
+### Impact
+- Eliminated all misuse of `useEffect` for data fetching
+- Improved code maintainability and consistency
+- Better error handling and loading states
+- Automatic caching and refetching via React Query
+- Reduced unnecessary re-renders
+- Better separation of concerns (data fetching vs. side effects)
+
 ## 2025-01-13 - User Flow and Technical Process Documentation
 
 ### Added

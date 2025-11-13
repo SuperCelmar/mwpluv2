@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Lato } from 'next/font/google';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { Providers } from '@/lib/queryClient';
 
 const lato = Lato({
   weight: ['300', '400', '700'],
@@ -26,10 +27,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={lato.className}>
-        <ThemeProvider>
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <Providers>
+          <ThemeProvider>
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

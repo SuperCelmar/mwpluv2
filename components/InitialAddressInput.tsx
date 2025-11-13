@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { MapPin, Loader2, Send } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { searchAddress, AddressSuggestion } from '@/lib/address-api';
+import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 
 interface InitialAddressInputProps {
@@ -14,39 +16,31 @@ interface InitialAddressInputProps {
 
 export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddressInputProps) {
   const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
-
-  useEffect(() => {
-    if (selectedAddress) {
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      if (query.length >= 3) {
-        console.log('[ADDRESS_SEARCH] Search triggered (debounced), query length:', query.length, 'query:', query);
-        setLoading(true);
-        console.log('[ADDRESS_SEARCH] Starting API call for address search');
-        const results = await searchAddress(query);
-        console.log('[ADDRESS_SEARCH] API call completed, received', results.length, 'suggestions');
-        setSuggestions(results);
-        setShowSuggestions(true);
-        setLoading(false);
-        if (results.length > 0) {
-          console.log('[ADDRESS_SEARCH] Suggestions displayed to user');
-        } else {
-          console.log('[ADDRESS_SEARCH] No suggestions found for query');
-        }
+  
+  // Debounce the query input
+  const debouncedQuery = useDebounce(query, 300);
+  
+  // Fetch address suggestions using React Query
+  const { data: suggestions = [], isLoading } = useQuery({
+    queryKey: ['address-search', debouncedQuery],
+    queryFn: () => {
+      console.log('[ADDRESS_SEARCH] Search triggered (debounced), query length:', debouncedQuery.length, 'query:', debouncedQuery);
+      console.log('[ADDRESS_SEARCH] Starting API call for address search');
+      return searchAddress(debouncedQuery);
+    },
+    enabled: debouncedQuery.length >= 3 && !selectedAddress,
+    onSuccess: (results) => {
+      console.log('[ADDRESS_SEARCH] API call completed, received', results.length, 'suggestions');
+      if (results.length > 0) {
+        console.log('[ADDRESS_SEARCH] Suggestions displayed to user');
       } else {
-        setSuggestions([]);
-        setShowSuggestions(false);
+        console.log('[ADDRESS_SEARCH] No suggestions found for query');
       }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [query, selectedAddress]);
+    },
+  });
+  
+  const showSuggestions = debouncedQuery.length >= 3 && !selectedAddress && (suggestions.length > 0 || isLoading);
 
   const handleSelect = (suggestion: AddressSuggestion) => {
     console.log('[ADDRESS_SELECT] User selected address:', {
@@ -58,8 +52,6 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
       coordinates: suggestion.geometry?.coordinates,
     });
     setQuery(suggestion.properties.label);
-    setSuggestions([]);
-    setShowSuggestions(false);
     setSelectedAddress(suggestion);
   };
 
@@ -122,7 +114,7 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
               className="pl-12 pr-12 h-14 text-base shadow-sm"
               autoFocus
             />
-            {loading && (
+            {isLoading && (
               <Loader2 className="absolute right-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 animate-spin z-10" />
             )}
           </div>
@@ -154,7 +146,7 @@ export function InitialAddressInput({ onAddressSubmit, disabled }: InitialAddres
             </div>
           )}
 
-          {showSuggestions && suggestions.length === 0 && query.length >= 3 && !loading && (
+          {showSuggestions && suggestions.length === 0 && debouncedQuery.length >= 3 && !isLoading && (
             <div className="absolute z-50 w-full mt-2 bg-white border rounded-lg shadow-xl p-4 text-center text-gray-500">
               Aucune adresse trouvée
             </div>

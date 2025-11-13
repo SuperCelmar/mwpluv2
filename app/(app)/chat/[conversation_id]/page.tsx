@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, V2Conversation, V2Message, V2ResearchHistory, V2Project } from '@/lib/supabase';
 import { logChatEvent, getFirstDocumentId } from '@/lib/analytics';
 import { useEnrichment } from './useEnrichment';
@@ -19,17 +20,12 @@ import { useArtifactSync } from '@/lib/hooks/useArtifactSync';
 import { InlineArtifactCard } from '@/components/InlineArtifactCard';
 import { getArtifactId } from '@/lib/utils/artifactDetection';
 import type { MapArtifactData, DocumentArtifactData } from '@/types/artifacts';
+import { toast } from '@/hooks/use-toast';
 
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<V2Message[]>([]);
-  const [conversation, setConversation] = useState<V2Conversation | null>(null);
-  const [project, setProject] = useState<V2Project | null>(null);
+  const queryClient = useQueryClient();
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [isFirstMessage, setIsFirstMessage] = useState(true);
-  const [researchContext, setResearchContext] = useState<V2ResearchHistory | null>(null);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [zoneName, setZoneName] = useState<string>('');
@@ -40,6 +36,144 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [analysisMessageTextComplete, setAnalysisMessageTextComplete] = useState<Record<string, boolean>>({});
   const [showFinalAnalysisMessage, setShowFinalAnalysisMessage] = useState(false);
   const [loadingMessageFadingOut, setLoadingMessageFadingOut] = useState(false);
+
+  // Fetch user authentication using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return null;
+      }
+      return user;
+    },
+    retry: false,
+  });
+
+  const userId = user?.id || null;
+
+  // Fetch conversation using React Query
+  const { data: conversation, isLoading: conversationLoading } = useQuery({
+    queryKey: ['conversation', params.conversation_id],
+    queryFn: async () => {
+      if (!userId) return null;
+
+      const { data: conv, error } = await supabase
+        .from('v2_conversations')
+        .select('*')
+        .eq('id', params.conversation_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!conv) {
+        router.push('/');
+        return null;
+      }
+      return conv;
+    },
+    enabled: !!userId,
+    onError: () => {
+      router.push('/');
+    },
+  });
+
+  // Fetch project using React Query (conditional)
+  const { data: project } = useQuery({
+    queryKey: ['project', conversation?.project_id],
+    queryFn: async () => {
+      if (!userId || !conversation?.project_id) return null;
+
+      const { data, error } = await supabase
+        .from('v2_projects')
+        .select('*')
+        .eq('id', conversation.project_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[CHAT_PAGE] Error loading project:', error);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!userId && !!conversation?.project_id,
+  });
+
+  // Fetch messages using React Query
+  const { data: messagesData = [] } = useQuery({
+    queryKey: ['messages', params.conversation_id],
+    queryFn: async () => {
+      if (!userId) return [];
+
+      const { data, error } = await supabase
+        .from('v2_messages')
+        .select('*')
+        .eq('conversation_id', params.conversation_id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!userId,
+  });
+
+  // Compute messages with initial address message if needed
+  const messages = useMemo(() => {
+    if (!conversation || messagesData.length > 0) {
+      return messagesData;
+    }
+
+    // Add initial address as first message if it exists and no messages yet
+    const initialAddress = (conversation.context_metadata as any)?.initial_address;
+    if (initialAddress) {
+      const addressMessage: V2Message = {
+        id: `initial-address-${conversation.id}`,
+        conversation_id: params.conversation_id,
+        user_id: userId!,
+        role: 'user',
+        message: initialAddress,
+        message_type: 'address_search',
+        conversation_turn: 1,
+        referenced_documents: null,
+        referenced_zones: null,
+        referenced_cities: null,
+        search_context: null,
+        intent_detected: null,
+        confidence_score: null,
+        ai_model_used: null,
+        reply_to_message_id: null,
+        metadata: null,
+        created_at: conversation.created_at || new Date().toISOString(),
+      };
+      return [addressMessage];
+    }
+
+    return messagesData;
+  }, [conversation, messagesData, params.conversation_id, userId]);
+
+  const isFirstMessage = messages.length === 0 || (messages.length === 1 && messages[0].message_type === 'address_search');
+
+  // Fetch research history using React Query
+  const { data: researchContext } = useQuery({
+    queryKey: ['research-history', params.conversation_id],
+    queryFn: async () => {
+      if (!userId) return null;
+
+      const { data } = await supabase
+        .from('v2_research_history')
+        .select('*')
+        .eq('conversation_id', params.conversation_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return data || null;
+    },
+    enabled: !!userId,
+  });
+
+  const loading = conversationLoading;
 
   // Use enrichment hook for background enrichment
   const enrichment = useEnrichment(params.conversation_id, conversation);
@@ -55,12 +189,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     activeTab: artifactActiveTab
   } = artifactSync;
 
-  useEffect(() => {
-    console.log('[CHAT_PAGE] Page initialized, conversation_id:', params.conversation_id);
-    checkAuthAndLoadConversation();
-  }, [params.conversation_id]);
-
-  // Auto-scroll to bottom when messages change
+  // useEffect: DOM manipulation (auto-scroll)
   useEffect(() => {
     if (scrollRef.current) {
       setTimeout(() => {
@@ -72,29 +201,30 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [messages]);
 
-  // Update zone name when enrichment completes
-  useEffect(() => {
-    const fetchZoneName = async () => {
-      if (enrichment.status === 'complete' && enrichment.data.zoneId && !zoneName) {
-        const { data: zoneData } = await supabase
-          .from('zones')
-          .select('description, name')
-          .eq('id', enrichment.data.zoneId)
-          .maybeSingle();
-        
-        if (zoneData) {
-          const extractedZoneName = zoneData.description || zoneData.name || '';
-          if (extractedZoneName) {
-            setZoneName(extractedZoneName);
-          }
+  // Fetch zone name using React Query when enrichment completes
+  const { data: zoneData } = useQuery({
+    queryKey: ['zone-name', enrichment.data.zoneId],
+    queryFn: async () => {
+      if (!enrichment.data.zoneId) return null;
+      const { data } = await supabase
+        .from('zones')
+        .select('description, name')
+        .eq('id', enrichment.data.zoneId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: enrichment.status === 'complete' && !!enrichment.data.zoneId && !zoneName,
+    onSuccess: (data) => {
+      if (data) {
+        const extractedZoneName = data.description || data.name || '';
+        if (extractedZoneName) {
+          setZoneName(extractedZoneName);
         }
       }
-    };
+    },
+  });
 
-    fetchZoneName();
-  }, [enrichment.status, enrichment.data.zoneId, zoneName]);
-
-  // Sync map artifact with enrichment data
+  // useEffect: state synchronization (map artifact sync)
   useEffect(() => {
     const contextMetadata = conversation?.context_metadata as any;
     const lon = contextMetadata?.geocoded?.lon;
@@ -148,7 +278,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [enrichment.data.mapGeometry, enrichment.status, conversation, zoneName, artifacts.map, updateArtifactState]);
 
-  // Sync document artifact with enrichment data
+  // useEffect: state synchronization (document artifact sync)
   useEffect(() => {
     if (enrichment.data.documentData?.documentId) {
       const docData = enrichment.data.documentData;
@@ -207,7 +337,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [enrichment.data.documentData, conversation, artifacts.document, isPanelOpen, artifactActiveTab, updateArtifactState, setArtifactTab]);
 
-  // Reset auto-open ref when conversation changes
+  // useEffect: reset refs when conversation changes
   useEffect(() => {
     hasAutoOpenedPanelRef.current = false;
     analysisMessageSavedRef.current = false;
@@ -216,7 +346,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     setLoadingMessageFadingOut(false);
   }, [params.conversation_id]);
 
-  // Trigger transition to final analysis message when enrichment completes
+  // useEffect: UI state transition (enrichment completion)
   useEffect(() => {
     // Only trigger if we have document content and it's rendered
     const hasDocumentContent = enrichment.data.documentData?.htmlContent;
@@ -255,49 +385,15 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     loadingMessageFadingOut
   ]);
 
-  // Save analysis message when enrichment completes AND document is rendered
-  useEffect(() => {
-    const saveAnalysisMessage = async () => {
-      // Only save if:
-      // 1. Enrichment is complete
-      // 2. Document is rendered (to ensure typewriter effect completes first)
-      // 3. We have artifacts
-      // 4. Message hasn't been saved yet
-      const isDocumentRendered = artifactSync.isArtifactRendered('document');
-      
-      console.log('[CHAT_PAGE] Save analysis message check:', {
-        enrichmentStatus: enrichment.status,
-        hasUserId: !!userId,
-        hasConversation: !!conversation,
-        alreadySaved: analysisMessageSavedRef.current,
-        hasDocumentId: !!enrichment.data.documentData?.documentId,
-        isDocumentRendered
-      });
-      
-      if (
-        enrichment.status !== 'complete' ||
-        !userId ||
-        !conversation ||
-        analysisMessageSavedRef.current ||
-        !enrichment.data.documentData?.documentId ||
-        !isDocumentRendered
-      ) {
-        return;
+  // Save analysis message mutation
+  const saveAnalysisMessageMutation = useMutation({
+    mutationFn: async () => {
+      if (!userId || !conversation || !enrichment.data.documentData?.documentId) {
+        throw new Error('Missing required data');
       }
 
-      // Check if message already exists in current messages
-      const hasAnalysisMessage = messages.some(
-        (msg) => msg.role === 'assistant' && msg.message.includes('Voici l\'analyse')
-      );
-
-      if (hasAnalysisMessage) {
-        console.log('[CHAT_PAGE] Analysis message already exists in local state, skipping save');
-        analysisMessageSavedRef.current = true;
-        return;
-      }
-
-      // Double-check in database to avoid duplicates (with stronger check)
-      const { data: existingMessages, error: checkError } = await supabase
+      // Check if message already exists in database
+      const { data: existingMessages } = await supabase
         .from('v2_messages')
         .select('id')
         .eq('conversation_id', params.conversation_id)
@@ -305,21 +401,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         .ilike('message', '%Voici l\'analyse%')
         .limit(1);
 
-      if (checkError) {
-        console.error('[CHAT_PAGE] Error checking for existing messages:', checkError);
-        // Continue anyway, but log the error
-      }
-
       if (existingMessages && existingMessages.length > 0) {
-        console.log('[CHAT_PAGE] Analysis message already exists in database, skipping save');
-        analysisMessageSavedRef.current = true;
-        return;
+        return null; // Already exists
       }
 
-      // Mark as saved BEFORE attempting to save to prevent race conditions
-      analysisMessageSavedRef.current = true;
-
-      // Create artifact references with map geometry in metadata
+      // Create artifact references
       const artifactReferences: Array<{
         type: 'map' | 'document';
         artifactId: string;
@@ -328,7 +414,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         metadata?: any;
       }> = [];
 
-      // Add map artifact if available - include geometry in metadata
       if (enrichment.data.mapGeometry && enrichment.data.zoneId) {
         artifactReferences.push({
           type: 'map',
@@ -339,7 +424,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           reason: 'enrichment-complete',
           timestamp: new Date().toISOString(),
           metadata: {
-            geometry: enrichment.data.mapGeometry, // Include multi-polygon zone geometry
+            geometry: enrichment.data.mapGeometry,
             center: {
               lat: (conversation.context_metadata as any)?.geocoded?.lat,
               lon: (conversation.context_metadata as any)?.geocoded?.lon,
@@ -349,11 +434,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         });
       }
 
-      // Add document artifact if available
       if (enrichment.data.documentData?.documentId) {
         const docData = enrichment.data.documentData;
-        if (docData.documentId) { // Type guard
-          // Create a properly typed documentData object for getArtifactId
+        if (docData.documentId) {
           const typedDocData = {
             documentId: docData.documentId,
             htmlContent: docData.htmlContent || undefined,
@@ -370,65 +453,79 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         }
       }
 
-      // Only save if we have at least one artifact
       if (artifactReferences.length === 0) {
-        console.log('[CHAT_PAGE] No artifacts to save, skipping analysis message');
-        return;
+        return null;
       }
 
-      // Create the analysis message - use zoneName if available, otherwise use generic text
       const analysisMessageText = zoneName
         ? `Voici l'analyse concernant la zone ${zoneName}:`
         : 'Voici l\'analyse concernant cette zone:';
 
-      try {
-        console.log('[CHAT_PAGE] Saving analysis message with artifacts and map geometry');
-        const { data: insertedMessage, error: insertError } = await supabase
-          .from('v2_messages')
-          .insert({
-            conversation_id: params.conversation_id,
-            user_id: userId,
-            role: 'assistant',
-            message: analysisMessageText,
-            message_type: 'text',
-            conversation_turn: messages.length + 1,
-            metadata: {
-              artifacts: artifactReferences,
-            },
-          })
-          .select()
-          .single();
+      const { data: insertedMessage, error } = await supabase
+        .from('v2_messages')
+        .insert({
+          conversation_id: params.conversation_id,
+          user_id: userId,
+          role: 'assistant',
+          message: analysisMessageText,
+          message_type: 'text',
+          conversation_turn: messages.length + 1,
+          metadata: {
+            artifacts: artifactReferences,
+          },
+        })
+        .select()
+        .single();
 
-        if (insertError) {
-          console.error('[CHAT_PAGE] Error saving analysis message:', insertError);
-          // Reset the flag if save failed so it can be retried
-          analysisMessageSavedRef.current = false;
-          return;
-        }
+      if (error) throw error;
 
-        console.log('[CHAT_PAGE] Analysis message saved successfully');
+      // Update conversation metadata
+      await supabase
+        .from('v2_conversations')
+        .update({
+          last_message_at: new Date().toISOString(),
+          message_count: messages.length + 1,
+        })
+        .eq('id', params.conversation_id);
 
-        // Add message to local state
-        if (insertedMessage) {
-          setMessages((prev) => [...prev, insertedMessage]);
-        }
-
-        // Update conversation metadata
-        await supabase
-          .from('v2_conversations')
-          .update({
-            last_message_at: new Date().toISOString(),
-            message_count: messages.length + 1,
-          })
-          .eq('id', params.conversation_id);
-      } catch (error) {
-        console.error('[CHAT_PAGE] Error in saveAnalysisMessage:', error);
-        // Reset the flag if save failed
-        analysisMessageSavedRef.current = false;
+      return insertedMessage;
+    },
+    onSuccess: (insertedMessage) => {
+      if (insertedMessage) {
+        // Invalidate messages query to refresh
+        queryClient.invalidateQueries({ queryKey: ['messages', params.conversation_id] });
+        analysisMessageSavedRef.current = true;
       }
-    };
+    },
+  });
 
-    saveAnalysisMessage();
+  // useEffect: trigger analysis message save when conditions are met
+  useEffect(() => {
+    const isDocumentRendered = artifactSync.isArtifactRendered('document');
+      
+    const shouldSave = (
+      enrichment.status === 'complete' &&
+      userId &&
+      conversation &&
+      !analysisMessageSavedRef.current &&
+      enrichment.data.documentData?.documentId &&
+      isDocumentRendered
+    );
+
+    // Check if message already exists in current messages
+    const hasAnalysisMessage = messages.some(
+      (msg) => msg.role === 'assistant' && msg.message.includes('Voici l\'analyse')
+    );
+
+    if (hasAnalysisMessage) {
+      analysisMessageSavedRef.current = true;
+      return;
+    }
+
+    if (shouldSave && !saveAnalysisMessageMutation.isPending) {
+      analysisMessageSavedRef.current = true;
+      saveAnalysisMessageMutation.mutate();
+    }
   }, [
     enrichment.status,
     enrichment.data.documentData,
@@ -440,10 +537,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     zoneName,
     params.conversation_id,
     artifactSync,
+    saveAnalysisMessageMutation,
   ]);
 
-  // Auto-open panel when coordinates are received (Step 1 begins)
-  // Only auto-open during active enrichment, not for completed conversations
+  // useEffect: UI behavior (auto-open panel)
   useEffect(() => {
     const contextMetadata = conversation?.context_metadata as any;
     const hasCoordinates = contextMetadata?.geocoded?.lon !== undefined && 
@@ -483,252 +580,61 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     });
   };
 
-  const checkAuthAndLoadConversation = async () => {
-    console.log('[CHAT_PAGE] Checking authentication and loading conversation');
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      console.log('[CHAT_PAGE] No user found, redirecting to login');
-      router.push('/login');
-      return;
-    }
-    console.log('[CHAT_PAGE] User authenticated, user_id:', user.id);
-    setUserId(user.id);
-    await loadConversation(user.id);
-  };
-
-  const loadConversation = async (currentUserId: string) => {
-    console.log('[CHAT_PAGE] loadConversation called, conversation_id:', params.conversation_id, 'user_id:', currentUserId);
-    try {
-      // Load conversation
-      console.log('[CHAT_PAGE] Loading conversation from database');
-      const { data: conv, error: convError } = await supabase
-        .from('v2_conversations')
-        .select('*')
-        .eq('id', params.conversation_id)
-        .eq('user_id', currentUserId)
-        .maybeSingle();
-
-      if (convError) {
-        console.error('[CHAT_PAGE] Error loading conversation:', convError);
-        throw convError;
-      }
-
-      if (!conv) {
-        console.log('[CHAT_PAGE] Conversation not found, redirecting to home');
-        router.push('/');
-        return;
-      }
-
-      console.log('[CHAT_PAGE] Conversation loaded successfully, conversation_id:', conv.id);
-      setConversation(conv);
-
-      // Load project if project_id exists
-      if (conv.project_id) {
-        console.log('[CHAT_PAGE] Loading project, project_id:', conv.project_id);
-        const { data: projectData, error: projectError } = await supabase
-          .from('v2_projects')
-          .select('*')
-          .eq('id', conv.project_id)
+  // Extract zone name from research history if available
+  useEffect(() => {
+    if (researchContext?.zone_id && !zoneName) {
+      // Zone name will be fetched by the zone-name query above when enrichment completes
+      // This is a fallback for completed conversations
+      const fetchZoneNameFromResearch = async () => {
+        const { data: zoneData } = await supabase
+          .from('zones')
+          .select('description, name')
+          .eq('id', researchContext.zone_id)
           .maybeSingle();
-
-        if (projectError) {
-          console.error('[CHAT_PAGE] Error loading project:', projectError);
-        } else if (projectData) {
-          console.log('[CHAT_PAGE] Project loaded successfully, project_id:', projectData.id);
-          setProject(projectData);
-        }
-      } else {
-        console.log('[CHAT_PAGE] No project_id, project will remain null');
-      }
-
-      // Load messages for this conversation
-      console.log('[CHAT_PAGE] Loading messages for conversation');
-      const { data: messagesData, error: messagesError } = await supabase
-        .from('v2_messages')
-        .select('*')
-        .eq('conversation_id', params.conversation_id)
-        .order('created_at', { ascending: true });
-
-      if (messagesError) {
-        console.error('[CHAT_PAGE] Error loading messages:', messagesError);
-        throw messagesError;
-      }
-
-      // Always set messages, even if empty
-      if (messagesData && messagesData.length > 0) {
-        console.log('[CHAT_PAGE] Messages loaded successfully, count:', messagesData.length);
-        setMessages(messagesData);
-        setIsFirstMessage(false);
-      } else {
-        console.log('[CHAT_PAGE] No messages found for conversation');
-        setMessages([]);
-      }
-
-      // Add initial address as first message if it exists and no messages yet
-      const initialAddress = (conv.context_metadata as any)?.initial_address;
-      if (initialAddress && (!messagesData || messagesData.length === 0)) {
-        console.log('[CHAT_PAGE] Adding initial address as first message:', initialAddress);
-        const addressMessage: V2Message = {
-          id: `initial-address-${conv.id}`,
-          conversation_id: params.conversation_id,
-          user_id: currentUserId,
-          role: 'user',
-          message: initialAddress,
-          message_type: 'address_search',
-          conversation_turn: 1,
-          referenced_documents: null,
-          referenced_zones: null,
-          referenced_cities: null,
-          search_context: null,
-          intent_detected: null,
-          confidence_score: null,
-          ai_model_used: null,
-          reply_to_message_id: null,
-          metadata: null,
-          created_at: conv.created_at || new Date().toISOString(),
-        };
-        setMessages([addressMessage]);
-      } else if (initialAddress && messagesData && messagesData.length > 0) {
-        // Check if initial address is already in messages
-        const hasAddressMessage = messagesData.some(
-          (msg) => msg.message === initialAddress && msg.message_type === 'address_search'
-        );
-        if (!hasAddressMessage) {
-          console.log('[CHAT_PAGE] Adding initial address as first message (prepending):', initialAddress);
-          const addressMessage: V2Message = {
-            id: `initial-address-${conv.id}`,
-            conversation_id: params.conversation_id,
-            user_id: currentUserId,
-            role: 'user',
-            message: initialAddress,
-            message_type: 'address_search',
-            conversation_turn: 0, // Before first message
-            referenced_documents: null,
-            referenced_zones: null,
-            referenced_cities: null,
-            search_context: null,
-            intent_detected: null,
-            confidence_score: null,
-            ai_model_used: null,
-            reply_to_message_id: null,
-            metadata: null,
-            created_at: conv.created_at || new Date().toISOString(),
-          };
-          setMessages([addressMessage, ...messagesData]);
-        }
-      }
-
-      // Load research history for context (if exists)
-      console.log('[CHAT_PAGE] Loading research history for context');
-      const { data: research } = await supabase
-        .from('v2_research_history')
-        .select('*')
-        .eq('conversation_id', params.conversation_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (research) {
-        console.log('[CHAT_PAGE] Research context loaded, research_id:', research.id);
-        setResearchContext(research);
         
-        // Try to extract zone name from research history
-        if (research.zone_id) {
-          // Fetch zone name from database
-          const { data: zoneData } = await supabase
-            .from('zones')
-            .select('description, name')
-            .eq('id', research.zone_id)
-            .maybeSingle();
-          
-          if (zoneData) {
-            const extractedZoneName = zoneData.description || zoneData.name || '';
-            if (extractedZoneName) {
-              setZoneName(extractedZoneName);
-            }
+        if (zoneData) {
+          const extractedZoneName = zoneData.description || zoneData.name || '';
+          if (extractedZoneName) {
+            setZoneName(extractedZoneName);
           }
         }
-      }
-
-      // Load artifacts for past conversations (if enrichment is completed)
-      if (conv.enrichment_status === 'completed' && research) {
-        console.log('[CHAT_PAGE] Loading artifacts for completed conversation');
-        const contextMetadata = conv.context_metadata as any;
-        const lon = contextMetadata?.geocoded?.lon;
-        const lat = contextMetadata?.geocoded?.lat;
-
-        // Load map artifact if coordinates exist
-        // Note: Map artifact initialization requires geometry, which will be loaded by the sync effect above
-        // Skip initialization here for completed conversations - the sync effect handles it when geometry is available
-
-        // Load document artifact if document_id exists in research
-        if (research.documents_found && research.documents_found.length > 0) {
-          const documentId = research.documents_found[0];
-          const documentData: DocumentArtifactData = {
-            documentId,
-            title: 'Document PLU',
-            type: 'PLU',
-            htmlContent: undefined, // Will be loaded by enrichment if needed
-            hasAnalysis: false,
-            cityName: contextMetadata?.city || '',
-            inseeCode: contextMetadata?.insee_code || '',
-          };
-
-          updateArtifactState('document', {
-            status: 'loading', // Will be updated when HTML content loads
-            data: documentData,
-            renderingStatus: 'pending',
-          });
-        }
-      }
-
-      console.log('[CHAT_PAGE] loadConversation completed successfully');
-    } catch (error) {
-      console.error('[CHAT_PAGE] Error loading conversation:', error);
-      router.push('/');
-    } finally {
-      // Always clear loading state, even if there was an error or early return
-      setLoading(false);
+      };
+      fetchZoneNameFromResearch();
     }
-  };
+  }, [researchContext?.zone_id, zoneName]);
 
-  const handleSendMessage = async (content: string, files?: File[]) => {
-    console.log('[CHAT_MESSAGE] handleSendMessage called with content length:', content.length);
-    
-    if (!userId || !conversation || sendingMessage) {
-      console.log('[CHAT_MESSAGE] Send blocked:', { hasUserId: !!userId, hasConversation: !!conversation, sendingMessage });
-      return;
+  // Load artifacts for completed conversations
+  useEffect(() => {
+    if (conversation?.enrichment_status === 'completed' && researchContext) {
+      const contextMetadata = conversation.context_metadata as any;
+      
+      // Load document artifact if document_id exists in research
+      if (researchContext.documents_found && researchContext.documents_found.length > 0) {
+        const documentId = researchContext.documents_found[0];
+        const documentData: DocumentArtifactData = {
+          documentId,
+          title: 'Document PLU',
+          type: 'PLU',
+          htmlContent: undefined,
+          hasAnalysis: false,
+          cityName: contextMetadata?.city || '',
+          inseeCode: contextMetadata?.insee_code || '',
+        };
+
+        updateArtifactState('document', {
+          status: 'loading',
+          data: documentData,
+          renderingStatus: 'pending',
+        });
+      }
     }
+  }, [conversation?.enrichment_status, researchContext, updateArtifactState]);
 
-    console.log('[CHAT_MESSAGE] Starting message send process');
-    setSendingMessage(true);
+  // Send message mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: async (content: string) => {
+      if (!userId || !conversation) throw new Error('Missing user or conversation');
 
-    // Insert user message
-    console.log('[CHAT_MESSAGE] Creating user message object');
-    const userMessage: V2Message = {
-      id: Date.now().toString(),
-      conversation_id: params.conversation_id,
-      user_id: userId,
-      role: 'user',
-      message: content,
-      message_type: 'text',
-      conversation_turn: messages.length + 1,
-      referenced_documents: null,
-      referenced_zones: null,
-      referenced_cities: null,
-      search_context: null,
-      intent_detected: null,
-      confidence_score: null,
-      ai_model_used: null,
-      reply_to_message_id: null,
-      metadata: null,
-      created_at: new Date().toISOString(),
-    };
-
-    console.log('[CHAT_MESSAGE] Adding user message to UI');
-    setMessages((prev) => [...prev, userMessage]);
-
-    try {
       console.log('[CHAT_MESSAGE] Constructing webhook payload');
       const webhookPayload: any = {
         new_conversation: isFirstMessage,
@@ -740,17 +646,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
       if (researchContext?.geo_lon && researchContext?.geo_lat) {
         webhookPayload.gps_coordinates = [researchContext.geo_lon, researchContext.geo_lat];
-        console.log('[CHAT_MESSAGE] Added GPS coordinates to payload');
       }
 
       if (researchContext?.documents_found && researchContext.documents_found.length > 0) {
         webhookPayload.document_ids = researchContext.documents_found;
-        console.log('[CHAT_MESSAGE] Added document IDs to payload, count:', researchContext.documents_found.length);
       }
 
       if (researchContext?.geocoded_address) {
         webhookPayload.address = researchContext.geocoded_address;
-        console.log('[CHAT_MESSAGE] Added address to payload');
       }
 
       console.log('[CHAT_MESSAGE] Calling chat API');
@@ -760,41 +663,13 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         body: JSON.stringify(webhookPayload),
       });
 
-      console.log('[CHAT_MESSAGE] Chat API response status:', response.status);
-
       if (!response.ok) {
-        console.error('[CHAT_MESSAGE] Chat API returned error status:', response.status);
         throw new Error('Failed to get response');
       }
 
       const data = await response.json();
-      console.log('[CHAT_MESSAGE] Chat API response received, message length:', data.message?.length || 0);
-
-      const assistantMessage: V2Message = {
-        id: (Date.now() + 1).toString(),
-        conversation_id: params.conversation_id,
-        user_id: userId,
-        role: 'assistant',
-        message: data.message,
-        message_type: 'text',
-        conversation_turn: messages.length + 2,
-        referenced_documents: researchContext?.documents_found || null,
-        referenced_zones: null,
-        referenced_cities: null,
-        search_context: null,
-        intent_detected: null,
-        confidence_score: null,
-        ai_model_used: null,
-        reply_to_message_id: null,
-        metadata: null,
-        created_at: new Date().toISOString(),
-      };
-
-      console.log('[CHAT_MESSAGE] Adding assistant message to UI');
-      setMessages((prev) => [...prev, assistantMessage]);
 
       // Insert messages into database
-      console.log('[CHAT_MESSAGE] Inserting messages into database');
       const { data: insertedMessages, error: insertError } = await supabase
         .from('v2_messages')
         .insert([
@@ -816,15 +691,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         ])
         .select();
 
-      if (insertError) {
-        console.error('[CHAT_MESSAGE] Error inserting messages:', insertError);
-        throw insertError;
-      }
-
-      console.log('[CHAT_MESSAGE] Messages inserted successfully, count:', insertedMessages?.length || 0);
+      if (insertError) throw insertError;
 
       // Update conversation
-      console.log('[CHAT_MESSAGE] Updating conversation metadata');
       await supabase
         .from('v2_conversations')
         .update({
@@ -833,13 +702,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         })
         .eq('id', params.conversation_id);
 
-      // Log analytics events for both messages
+      // Log analytics events
       if (insertedMessages && insertedMessages.length >= 2) {
-        console.log('[CHAT_MESSAGE] Logging analytics events');
         const [userMsg, assistantMsg] = insertedMessages;
         const documentId = getFirstDocumentId(researchContext?.documents_found);
 
-        // Log user message event
         await logChatEvent({
           conversation_id: params.conversation_id,
           message_id: userMsg.id,
@@ -848,7 +715,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           user_query_length: content.length,
         });
 
-        // Log assistant message event
         await logChatEvent({
           conversation_id: params.conversation_id,
           message_id: assistantMsg.id,
@@ -858,34 +724,36 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         });
       }
 
-      if (isFirstMessage) {
-        console.log('[CHAT_MESSAGE] First message completed, setting isFirstMessage to false');
-        setIsFirstMessage(false);
-      }
+      return { insertedMessages, data };
+    },
+    onSuccess: () => {
+      // Invalidate messages query to refresh
+      queryClient.invalidateQueries({ queryKey: ['messages', params.conversation_id] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', params.conversation_id] });
+    },
+  });
 
+  const handleSendMessage = async (content: string, files?: File[]) => {
+    console.log('[CHAT_MESSAGE] handleSendMessage called with content length:', content.length);
+    
+    if (!userId || !conversation || sendMessageMutation.isPending) {
+      console.log('[CHAT_MESSAGE] Send blocked:', { hasUserId: !!userId, hasConversation: !!conversation, isPending: sendMessageMutation.isPending });
+      return;
+    }
+
+    console.log('[CHAT_MESSAGE] Starting message send process');
+    setSendingMessage(true);
+
+    try {
+      await sendMessageMutation.mutateAsync(content);
       console.log('[CHAT_MESSAGE] Message send process completed successfully');
     } catch (error) {
       console.error('[CHAT_MESSAGE] Error sending message:', error);
-      const errorMessage: V2Message = {
-        id: (Date.now() + 1).toString(),
-        conversation_id: params.conversation_id,
-        user_id: userId || '',
-        role: 'assistant',
-        message: 'Désolé, une erreur est survenue. Veuillez réessayer.',
-        message_type: 'text',
-        conversation_turn: messages.length + 2,
-        referenced_documents: null,
-        referenced_zones: null,
-        referenced_cities: null,
-        search_context: null,
-        intent_detected: null,
-        confidence_score: null,
-        ai_model_used: null,
-        reply_to_message_id: null,
-        metadata: null,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      toast({
+        title: 'Erreur',
+        description: 'Désolé, une erreur est survenue. Veuillez réessayer.',
+        variant: 'destructive',
+      });
     } finally {
       setSendingMessage(false);
     }

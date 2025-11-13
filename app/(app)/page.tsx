@@ -1,56 +1,57 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { AddressSuggestion, searchAddress } from '@/lib/address-api';
 import { createLightweightConversation } from '@/lib/supabase/queries';
+import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from '@/hooks/use-toast';
 
 export default function Home() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
   const [addressQuery, setAddressQuery] = useState('');
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  // Fetch user authentication using React Query
+  const { data: user, isLoading: loading } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return null;
+      }
+      return user;
+    },
+    retry: false,
+  });
 
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    setUserId(user.id);
-    setLoading(false);
-  };
+  const userId = user?.id || null;
 
-  const handleAddressInputChange = async (value: string) => {
+  // Debounce address query for search
+  const debouncedAddressQuery = useDebounce(addressQuery, 300);
+
+  // Fetch address suggestions using React Query
+  const { data: addressSuggestions = [] } = useQuery({
+    queryKey: ['address-search', debouncedAddressQuery],
+    queryFn: () => searchAddress(debouncedAddressQuery),
+    enabled: debouncedAddressQuery.length >= 3 && !selectedAddress,
+  });
+
+  const showAddressSuggestions = debouncedAddressQuery.length >= 3 && !selectedAddress && addressSuggestions.length > 0;
+
+  const handleAddressInputChange = (value: string) => {
     setAddressQuery(value);
     setSelectedAddress(null);
-    
-    if (value.length >= 3) {
-      const results = await searchAddress(value);
-      setAddressSuggestions(results);
-      setShowAddressSuggestions(results.length > 0);
-    } else {
-      setAddressSuggestions([]);
-      setShowAddressSuggestions(false);
-    }
   };
 
   const handleAddressSelect = (address: AddressSuggestion) => {
     setSelectedAddress(address);
     setAddressQuery(address.properties.label);
-    setAddressSuggestions([]);
-    setShowAddressSuggestions(false);
   };
 
   const handleAddressSubmit = async (address: AddressSuggestion) => {

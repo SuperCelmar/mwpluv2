@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AddressInput } from '@/components/AddressInput';
 import { supabase, V2Project, V2Conversation } from '@/lib/supabase';
 import { AddressSuggestion } from '@/lib/address-api';
@@ -15,85 +16,79 @@ import { toast } from '@/hooks/use-toast';
 
 export default function ProjectPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [project, setProject] = useState<V2Project | null>(null);
-  const [conversations, setConversations] = useState<V2Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    checkUser();
-  }, [params.id]);
-
-  const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    fetchProject();
-    fetchConversations();
-  };
-
-  const fetchProject = async () => {
-    try {
+  // Fetch user authentication using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push('/login');
-        return;
+        return null;
       }
+      return user;
+    },
+    retry: false,
+  });
+
+  const userId = user?.id;
+
+  // Fetch project using React Query
+  const { data: project, isLoading: projectLoading } = useQuery({
+    queryKey: ['project', params.id],
+    queryFn: async () => {
+      if (!userId) return null;
 
       const { data, error } = await supabase
         .from('v2_projects')
         .select('*')
         .eq('id', params.id)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (error) throw error;
 
       if (!data) {
         router.push('/projects');
-        return;
+        return null;
       }
 
-      setProject(data);
-    } catch (error) {
-      console.error('Error fetching project:', error);
+      return data;
+    },
+    enabled: !!userId,
+    onError: () => {
       router.push('/projects');
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+  });
 
-  const fetchConversations = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  // Fetch conversations using React Query
+  const { data: conversations = [] } = useQuery({
+    queryKey: ['project-conversations', params.id],
+    queryFn: async () => {
+      if (!userId) return [];
 
       const { data, error } = await supabase
         .from('v2_conversations')
         .select('*')
         .eq('project_id', params.id)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (data) setConversations(data);
-    } catch (error) {
-      console.error('Error fetching conversations:', error);
-    }
-  };
+      return data || [];
+    },
+    enabled: !!userId && !!project,
+  });
 
-  const handleAddressSelect = async (address: AddressSuggestion) => {
-    setCreating(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
+  const loading = projectLoading;
+
+  // Create conversation mutation
+  const createConversationMutation = useMutation({
+    mutationFn: async (address: AddressSuggestion) => {
+      if (!userId) throw new Error('User not authenticated');
 
       const fullAddress = address.properties.label;
       const defaultTitle = address.properties.city && fullAddress 
@@ -104,8 +99,8 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       const { data: conversation, error: conversationError } = await supabase
         .from('v2_conversations')
         .insert({
-          user_id: user.id,
-          project_id: params.id, // Link directly to project
+          user_id: userId,
+          project_id: params.id,
           conversation_type: 'address_analysis',
           title: defaultTitle,
           context_metadata: {
@@ -131,7 +126,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       await supabase
         .from('v2_research_history')
         .insert({
-          user_id: user.id,
+          user_id: userId,
           conversation_id: conversation.id,
           address_input: fullAddress,
           geo_lon: address.geometry?.coordinates?.[0] || null,
@@ -139,8 +134,19 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           success: true,
         });
 
+      return conversation;
+    },
+    onSuccess: (conversation) => {
+      // Invalidate conversations query to refresh list
+      queryClient.invalidateQueries({ queryKey: ['project-conversations', params.id] });
       // Navigate to the new conversation
       router.push(`/chat/${conversation.id}`);
+    },
+  });
+
+  const handleAddressSelect = async (address: AddressSuggestion) => {
+    try {
+      await createConversationMutation.mutateAsync(address);
     } catch (error) {
       console.error('Error creating conversation:', error);
       toast({
@@ -148,8 +154,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         description: 'Impossible de créer la conversation. Veuillez réessayer.',
         variant: 'destructive',
       });
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -325,7 +329,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AddressInput onAddressSelect={handleAddressSelect} disabled={creating} />
+            <AddressInput onAddressSelect={handleAddressSelect} disabled={createConversationMutation.isPending} />
           </CardContent>
         </Card>
       </div>

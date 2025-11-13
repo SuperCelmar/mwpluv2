@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -17,25 +17,29 @@ import { formatLastLogin } from '@/lib/utils/profile-helpers';
 import { supabase } from '@/lib/supabase';
 
 export function LoginHistoryTable() {
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Fetch user using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user;
+    },
+  });
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
-  const loadHistory = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { history: loginHistory, error } = await getLoginHistory(user.id, 50);
-    if (error) {
-      console.error('Error loading login history:', error);
-    } else {
-      setHistory(loginHistory);
-    }
-    setLoading(false);
-  };
+  // Fetch login history using React Query
+  const { data: history = [], isLoading: loading } = useQuery({
+    queryKey: ['login-history', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { history: loginHistory, error } = await getLoginHistory(user.id, 50);
+      if (error) {
+        console.error('Error loading login history:', error);
+        return [];
+      }
+      return loginHistory || [];
+    },
+    enabled: !!user?.id,
+  });
 
   if (loading) {
     return (

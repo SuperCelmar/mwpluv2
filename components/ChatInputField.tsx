@@ -20,6 +20,7 @@ export function ChatInputField({
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // useEffect: DOM manipulation (auto-resize textarea)
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';

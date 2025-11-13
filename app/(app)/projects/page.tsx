@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, FolderOpen } from 'lucide-react';
 import { ProjectCard } from '@/components/ProjectCard';
 import { NewConversationModal } from '@/components/NewConversationModal';
@@ -16,34 +17,30 @@ type ProjectWithConversations = V2Project & {
 export default function ProjectsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [projects, setProjects] = useState<ProjectWithConversations[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
   const [showNewModal, setShowNewModal] = useState(false);
 
-  useEffect(() => {
-    checkUser();
-  }, []);
+  // Fetch user authentication using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return null;
+      }
+      return user;
+    },
+    retry: false,
+  });
 
-  useEffect(() => {
-    if (searchParams.get('modal') === 'new') {
-      setShowNewModal(true);
-    }
-  }, [searchParams]);
+  const userId = user?.id;
 
-  const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    setUser(user);
-    fetchProjects();
-  };
+  // Fetch projects using React Query
+  const { data: projects = [], isLoading: loading } = useQuery({
+    queryKey: ['projects', userId],
+    queryFn: async () => {
+      if (!userId) return [];
 
-  const fetchProjects = async () => {
-    setLoading(true);
-    try {
       // Query v2 projects with their conversations
       const { data, error } = await supabase
         .from('v2_projects')
@@ -56,20 +53,22 @@ export default function ProjectsPage() {
             created_at
           )
         `)
+        .eq('user_id', userId)
         .or('status.eq.draft,status.eq.active')
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
+      return (data || []) as ProjectWithConversations[];
+    },
+    enabled: !!userId,
+  });
 
-      if (data) {
-        setProjects(data);
-      }
-    } catch (error) {
-      console.error('Error fetching projects:', error);
-    } finally {
-      setLoading(false);
+  // useEffect: sync with URL search params
+  useEffect(() => {
+    if (searchParams.get('modal') === 'new') {
+      setShowNewModal(true);
     }
-  };
+  }, [searchParams]);
 
   const handleNewConversation = () => {
     setShowNewModal(true);

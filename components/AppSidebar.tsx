@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useEffect, useLayoutEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { getSidebarState } from "@/lib/utils/sidebar-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,12 +30,21 @@ export function AppSidebar() {
   const { theme, setTheme } = useTheme();
   // Always start with false to match server-side rendering (prevents hydration error)
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
   const [mounted, setMounted] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [hasRestoredState, setHasRestoredState] = useState(false);
   const isRestoringRef = useRef(true);
   const initialOpenStateRef = useRef<boolean | null>(null);
+
+  // Fetch user using React Query
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user;
+    },
+  });
+
   const { displayName, loading: displayNameLoading } = useDisplayName(user?.id || null);
   const { avatarUrl, loading: avatarLoading } = useAvatar(user?.id || null);
 
@@ -76,19 +86,15 @@ export function AppSidebar() {
     }
   }, []);
 
-  // Save sidebar state to localStorage whenever it changes (but not during initial restoration)
+  // useEffect: sync with external system (localStorage)
   useEffect(() => {
     if (hasRestoredState && typeof window !== 'undefined') {
       localStorage.setItem('sidebar-open', open.toString());
     }
   }, [open, hasRestoredState]);
 
+  // useEffect: sync with external system (theme)
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getUser();
     setMounted(true);
   }, []);
 
