@@ -44,3 +44,4 @@ COMMENT ON POLICY "Admins can update all profiles" ON profiles IS
   'Allows admin users to update any user profile. Uses is_admin() function to prevent infinite recursion.';
 
 
+

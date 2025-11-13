@@ -1,5 +1,29 @@
 # Changelog
 
+## 2025-01-13 - User Flow and Technical Process Documentation
+
+### Added
+- **Comprehensive User Flow Documentation** (`USER_FLOW_DOCUMENTATION.md`):
+  - Complete documentation of the entire user experience flow from address input to final analysis display
+  - Detailed technical implementation guide with file paths and line numbers for each step
+  - Covers all 8 major phases: Address Input, Conversation Creation, Navigation, Enrichment, Map Display, Document Retrieval, Analysis Message, and Artifact Management
+  - Includes verified locations for all previously "to be verified" functions:
+    - `checkDuplicateByCoordinates` in `lib/supabase.ts` (lines 309-341)
+    - `fetchMunicipality` in `lib/carto-api.ts` (lines 223-303)
+    - `getOrCreateCity` in `lib/geo-enrichment.ts` (lines 107-214)
+    - `getOrCreateZone` in `lib/geo-enrichment.ts` (lines 338-405)
+    - `fetchDocument` in `lib/carto-api.ts` (lines 212-217)
+    - Artifact store in `lib/stores/artifactStore.ts` (lines 1-214)
+    - DocumentViewer in `components/DocumentViewer.tsx` (lines 1-119)
+  - Provides implementation status summary and key files reference
+  - Documents progressive loading flow, artifact synchronization, and background enrichment process
+
+### Impact
+- Developers can now easily navigate the codebase using the documentation as a guide
+- Each technical step includes precise file paths and line numbers for quick reference
+- Comprehensive understanding of the sequential process from address input to artifact display
+- Documentation serves as a debugging reference and onboarding guide
+
 ## 2025-01-13 - Fix Artifact Rendering Status Updates (Critical Bug)
 
 ### Fixed

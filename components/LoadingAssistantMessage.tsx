@@ -62,9 +62,10 @@ export function LoadingAssistantMessage({
       progressMunicipality: progress.municipality
     });
     
-    // Check if we're in Step 1 and map with polygon is rendered
-    if (loadingStage === 'step1' && isMapRendered && data.mapGeometry && !mapPolygonRenderedTimestamp.current) {
-      console.log('[LOADING_MESSAGE] Step 1: Map with polygon rendered, starting 2s delay');
+    // Check if we're in Step 1 and map is rendered (marker only, not polygon)
+    // Polygon rendering is cosmetic and shouldn't block step progression
+    if (loadingStage === 'step1' && isMapRendered && !mapPolygonRenderedTimestamp.current) {
+      console.log('[LOADING_MESSAGE] Step 1: Map marker rendered, starting 2s delay');
       mapPolygonRenderedTimestamp.current = Date.now();
       
       // After 2 seconds, transition to Step 2
