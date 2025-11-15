@@ -1,4 +1,9 @@
 import { http, HttpResponse } from 'msw';
+import {
+  createMockZoneUrbaResponse,
+  createMockDocumentResponse,
+  createMockMunicipalityResponse,
+} from '../utils/test-helpers';
 
 // Mock user data
 const mockUser = {
@@ -85,6 +90,12 @@ const parsePostgRESTFilter = (paramValue: string | null): string | null => {
   // Handle direct value
   return paramValue;
 };
+
+const resolveInseeCode = (url: URL) =>
+  url.searchParams.get('code_insee') || url.searchParams.get('insee') || '75056';
+
+const isRnuCommune = (inseeCode: string | null | undefined) =>
+  inseeCode === '01001';
 
 export const handlers = [
   // Note: Supabase Auth is mocked at module level in setup.ts
@@ -288,6 +299,50 @@ export const handlers = [
     return HttpResponse.json({
       features: query ? mockAddresses : [],
     });
+  }),
+
+  // Carto APIs (IGN) - mocked to avoid large payloads
+  http.get('https://apicarto.ign.fr/api/gpu/zone-urba', ({ request }) => {
+    const url = new URL(request.url);
+    const inseeCode = resolveInseeCode(url);
+    const isRnu = isRnuCommune(inseeCode);
+    return HttpResponse.json(
+      createMockZoneUrbaResponse(
+        [
+          {
+            code: isRnu ? 'RNU' : 'UA1',
+            name: isRnu ? 'Zone RNU' : 'Zone urbaine centre',
+          },
+        ],
+        [2.3397, 48.8606]
+      )
+    );
+  }),
+
+  http.get('https://apicarto.ign.fr/api/gpu/document', ({ request }) => {
+    const url = new URL(request.url);
+    const inseeCode = resolveInseeCode(url);
+    const isRnu = isRnuCommune(inseeCode);
+    return HttpResponse.json(
+      createMockDocumentResponse({
+        codeInsee: inseeCode,
+        isRNU: isRnu,
+        documentUrl: `https://example.com/plu/${inseeCode}.pdf`,
+      })
+    );
+  }),
+
+  http.get('https://apicarto.ign.fr/api/gpu/municipality', ({ request }) => {
+    const url = new URL(request.url);
+    const inseeCode = resolveInseeCode(url);
+    const isRnu = isRnuCommune(inseeCode);
+    return HttpResponse.json(
+      createMockMunicipalityResponse({
+        codeInsee: inseeCode,
+        name: isRnu ? 'Commune RNU' : 'Paris',
+        isRnu,
+      })
+    );
   }),
 
   // Chat API proxy (client -> /api/chat)

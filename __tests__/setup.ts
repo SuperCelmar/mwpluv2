@@ -10,11 +10,8 @@ import { TEST_USER_ID } from './utils/test-helpers';
  * 
  * - Supabase: Mocked via MSW handlers (v1 and v2 tables)
  * - French Address API: Mocked via MSW
+ * - Carto APIs (IGN): Mocked via MSW to avoid large payloads
  * - N8N Webhook: Mocked via MSW
- * - Carto APIs: REAL network calls to apicarto.ign.fr
- *   - Tests making Carto API calls will be slower (network requests)
- *   - These tests require internet connection
- *   - Consider increasing test timeout for Carto API tests
  */
 
 // IMPORTANT: Start MSW server FIRST, before any imports that might make network requests
@@ -24,12 +21,11 @@ beforeAll(() => {
   server.listen({ 
     onUnhandledRequest: (request) => {
       // Only warn about unhandled requests that look like API calls
-      // NOTE: Carto API requests to apicarto.ign.fr are now REAL network calls
-      // (not mocked) - so they won't trigger warnings
       if (request.url.includes('supabase') || 
           request.url.includes('rest/v1') || 
           request.url.includes('api-adresse') ||
-          request.url.includes('n8n')) {
+          request.url.includes('n8n') ||
+          request.url.includes('apicarto.ign.fr')) {
         console.warn('Unhandled MSW request:', request.method, request.url);
       }
     }

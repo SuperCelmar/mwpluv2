@@ -1,9 +1,21 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+} from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatConversationPage from '@/app/(app)/chat/[conversation_id]/page';
 import { mockRouter, mockParams, createMockV2Conversation } from '@/__tests__/utils/test-helpers';
 import { server } from '@/__tests__/mocks/server';
 import { http, HttpResponse } from 'msw';
+
+let originalElementScrollTo: typeof Element.prototype.scrollTo | undefined;
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
@@ -12,10 +24,19 @@ vi.mock('next/navigation', () => ({
 }));
 
 describe('Load Conversation Flow (v2)', () => {
+  beforeAll(() => {
+    originalElementScrollTo = Element.prototype.scrollTo;
+  });
+
   beforeEach(() => {
     mockRouter();
     mockParams({ conversation_id: 'conversation-123' });
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    Object.defineProperty(Element.prototype, 'scrollTo', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
 
     // Mock v2 conversation fetch
     const mockConversation = createMockV2Conversation({
@@ -38,10 +59,40 @@ describe('Load Conversation Flow (v2)', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalElementScrollTo) {
+      Object.defineProperty(Element.prototype, 'scrollTo', {
+        configurable: true,
+        writable: true,
+        value: originalElementScrollTo,
+      });
+    } else {
+      delete (Element.prototype as any).scrollTo;
+    }
   });
 
+  afterAll(() => {
+    if (originalElementScrollTo) {
+      Object.defineProperty(Element.prototype, 'scrollTo', {
+        configurable: true,
+        writable: true,
+        value: originalElementScrollTo,
+      });
+    } else {
+      delete (Element.prototype as any).scrollTo;
+    }
+  });
+
+  function renderConversationPage() {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatConversationPage params={{ conversation_id: 'conversation-123' }} />
+      </QueryClientProvider>
+    );
+  }
+
   it('should show loading screen when artifacts are not ready', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+    renderConversationPage();
 
     // Wait for initial auth check
     await waitFor(() => {
@@ -55,7 +106,7 @@ describe('Load Conversation Flow (v2)', () => {
   });
 
   it('should update document_loaded state after 1.5s', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+    renderConversationPage();
 
     // Wait for initial load
     await waitFor(() => {
@@ -72,7 +123,7 @@ describe('Load Conversation Flow (v2)', () => {
   });
 
   it('should update map_loaded and artifacts_ready after 3s', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+    renderConversationPage();
 
     // Wait for initial load
     await waitFor(() => {
@@ -94,7 +145,7 @@ describe('Load Conversation Flow (v2)', () => {
   });
 
   it('should enable input after artifacts are ready', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+    renderConversationPage();
 
     // Wait for initial load
     await waitFor(() => {
@@ -115,7 +166,7 @@ describe('Load Conversation Flow (v2)', () => {
   });
 
   it('should open right panel after artifacts are ready', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+    renderConversationPage();
 
     // Wait for initial load
     await waitFor(() => {
@@ -132,7 +183,7 @@ describe('Load Conversation Flow (v2)', () => {
   });
 
   it('should show loading indicators in correct order', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+    renderConversationPage();
 
     // Wait for initial load
     await waitFor(() => {

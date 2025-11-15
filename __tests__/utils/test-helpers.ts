@@ -405,8 +405,10 @@ export function createMockDocumentResponse(options?: {
 export function createMockMunicipalityResponse(options?: {
   codeInsee?: string;
   name?: string;
+  isRnu?: boolean;
 }) {
-  const { codeInsee = '75056', name = 'Paris' } = options || {};
+  const { codeInsee = '75056', name = 'Paris', isRnu = false } = options || {};
+  const normalizedName = name.toUpperCase();
 
   return {
     type: 'FeatureCollection',
@@ -415,8 +417,11 @@ export function createMockMunicipalityResponse(options?: {
         type: 'Feature',
         properties: {
           code_insee: codeInsee,
+          insee: codeInsee,
+          name: normalizedName,
           nom_commune: name,
           code_departement: codeInsee.substring(0, 2),
+          is_rnu: isRnu,
         },
         geometry: {
           type: 'Polygon',

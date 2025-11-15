@@ -3416,3 +3416,26 @@ Following project guidelines from `project_context.md`:
   - Users can view and update their own profiles
   - Admins can view and update all profiles
   - Users can create their own profile records
+
+## 2025-11-15
+
+### Assessed
+- Audited the sequential implementation plan end-to-end. Verified duplicate detection, research-history inserts, enrichment metadata persistence, branch-aware chat UX, and webhook mirroring in `app/(app)/page.tsx`, `lib/supabase/queries.ts`, `lib/workers/conversationEnrichment.ts`, `app/(app)/chat/[conversation_id]/page.tsx`, `components/LoadingAssistantMessage.tsx`, `components/AnalysisFoundMessage.tsx`, `components/chat/artifacts/DocumentCard.tsx`, `components/ChatInputField.tsx`, and `app/api/chat/route.ts`.
+- Confirmed additive Supabase migrations `supabase/migrations/20251215000001_add_branch_metadata_to_conversations.sql` and `supabase/migrations/20251215000002_add_branch_metadata_to_research_history.sql` ship the required metadata columns.
+- Identified missing Step‑2 deliverables: there are still no Vitest/MSW scenarios for the specified RNU / non‑RNU flows and the load‑conversation suite (`__tests__/integration/load-conversation.test.tsx`) renders `ChatConversationPage` without a `QueryClientProvider`, so worker metadata flags remain untested.
+
+### QA
+- `npm run lint` fails with longstanding `react/no-unescaped-entities`, `@next/next/no-img-element`, and hook dependency warnings across files such as `app/(app)/profile/page.tsx`, `components/LoadingAssistantMessage.tsx`, and `components/ui/ai-prompt-box.tsx`.
+- `npm run test` fails: the load-conversation tests error on the missing `QueryClientProvider`, and the live `__tests__/integration/carto-apis.test.tsx` suite streams full IGN GeoJSON responses (≈5 000 features) until Node exhausts heap memory.
+- `npm run build` succeeds but logs deprecation warnings for `punycode`, a critical dependency warning from `@supabase/realtime-js`, and notes `/projects` is deopted to client-side rendering.
+
+### Notes
+- Supabase project `ofeyssipibktmbfebibo` currently has zero rows in `v2_conversation_documents` and `v2_project_documents`, so the new document-linking pathways have not yet been exercised on live data.
+
+### Added
+- `__tests__/integration/chat-step2-flow.test.tsx`: Step‑2 integration suite covering the RNU and non‑RNU analysis loading messages with mocked enrichment + artifact state so the three-stage assistant script is now regression tested end-to-end.
+
+### Fixed
+- `__tests__/integration/load-conversation.test.tsx` now renders `ChatConversationPage` inside a `QueryClientProvider`, matching the runtime setup and unblocking React Query cache assertions.
+- IGN Carto endpoints are stubbed at the MSW layer (`__tests__/mocks/handlers.ts`), and `__tests__/integration/carto-apis.test.tsx` exercises those fixtures instead of streaming the live GeoJSON payloads, preventing the prior heap exhaustion.
+- `__tests__/integration/load-conversation.test.tsx`: Polyfilled `Element.prototype.scrollTo` via Vitest hooks so the auto-scroll effect no longer throws inside JSDOM; the suite now progresses to the real enrichment assertions (still failing pending metadata fixtures).
