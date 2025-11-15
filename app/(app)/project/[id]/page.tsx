@@ -122,6 +122,24 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         throw conversationError || new Error('Failed to create conversation');
       }
 
+      // Create initial address message
+      const { error: messageError } = await supabase
+        .from('v2_messages')
+        .insert({
+          conversation_id: conversation.id,
+          user_id: userId,
+          role: 'user',
+          message: fullAddress,
+          message_type: 'address_search',
+          conversation_turn: 1,
+          created_at: new Date().toISOString(),
+        });
+
+      if (messageError) {
+        console.error('[PROJECT_PAGE] Error creating initial message:', messageError);
+        // Don't fail the whole operation, but log the error
+      }
+
       // Store in research history
       await supabase
         .from('v2_research_history')

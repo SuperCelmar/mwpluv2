@@ -1,13 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
-import {
-  geometryToLeafletPolygons,
-  type SupportedGeometry,
-  buildBoundsFromPolygons,
-} from '@/lib/utils/mapGeometry';
 
 // Dynamically import MapContainer to avoid SSR issues with Leaflet
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), {
@@ -47,6 +42,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/**
+ * Convert GeoJSON coordinates to Leaflet LatLng format
+ * GeoJSON uses [lon, lat] while Leaflet expects [lat, lon]
+ */
+function convertGeoJSONToLeaflet(coords: any[][]): [number, number][][] {
+  if (!coords || coords.length === 0) return [];
+  
+  return coords.map(polygon => 
+    polygon.map(([lon, lat]) => [lat, lon] as [number, number])
+  );
+}
+
 export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplete }: MapArtifactProps) {
   const mapRef = useRef<any>(null);
   const [mapCreated, setMapCreated] = useState(false);
@@ -55,17 +62,6 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
   const [shouldRenderPolygon, setShouldRenderPolygon] = useState(false);
   const renderCompleteCalled = useRef(false);
   const polygonDelayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const supportedGeometry = zoneGeometry as SupportedGeometry;
-  const leafletPolygons = useMemo(
-    () => geometryToLeafletPolygons(supportedGeometry),
-    [supportedGeometry]
-  );
-
-  useEffect(() => {
-    console.log('[MAP_ARTIFACT] Component mounted:', { lat, lon, hasGeometry: !!zoneGeometry, isLoading });
-  }, [lat, lon, zoneGeometry, isLoading]);
-
   // Reset polygon rendered state when geometry changes
   useEffect(() => {
     setPolygonRendered(false);
@@ -77,23 +73,26 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
       clearTimeout(polygonDelayTimeoutRef.current);
       polygonDelayTimeoutRef.current = null;
     }
-  }, [leafletPolygons]);
+  }, [zoneGeometry]);
 
   // Delay polygon rendering by 1-2 seconds after map and marker are ready
   useEffect(() => {
-    const hasGeometry = leafletPolygons.length > 0;
+    const hasGeometry = zoneGeometry && zoneGeometry.type === 'MultiPolygon' && zoneGeometry.coordinates;
+    const leafletCoords = hasGeometry 
+      ? convertGeoJSONToLeaflet(zoneGeometry.coordinates[0] || [])
+      : [];
     
     console.log('[MAP_ARTIFACT] Polygon delay check:', {
       mapCreated,
       markerRendered,
       hasGeometry,
-      coordsLength: leafletPolygons.length,
+      coordsLength: leafletCoords.length,
       shouldRenderPolygon,
       zoneGeometryType: zoneGeometry?.type,
       coordinatesExist: !!zoneGeometry?.coordinates
     });
     
-    if (mapCreated && markerRendered && hasGeometry && !shouldRenderPolygon) {
+    if (mapCreated && markerRendered && leafletCoords.length > 0 && !shouldRenderPolygon) {
       // Random delay between 1-2 seconds (1500ms average)
       const delay = 1000 + Math.random() * 1000;
       console.log(`[MAP_ARTIFACT] Scheduling polygon render after ${delay}ms delay`);
@@ -110,15 +109,20 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
         polygonDelayTimeoutRef.current = null;
       }
     };
-  }, [mapCreated, markerRendered, shouldRenderPolygon, leafletPolygons, zoneGeometry]);
+  }, [mapCreated, markerRendered, zoneGeometry, shouldRenderPolygon]);
 
   // Helper function to calculate map bounds
   const getBounds = () => {
     const bounds: [number, number][] = [[lat, lon]];
     
-    if (leafletPolygons.length > 0) {
-      const polygonBounds = buildBoundsFromPolygons(leafletPolygons);
-      bounds.push(...polygonBounds);
+    if (zoneGeometry && zoneGeometry.type === 'MultiPolygon' && zoneGeometry.coordinates) {
+      zoneGeometry.coordinates.forEach((polygon: any[][][]) => {
+        polygon.forEach((ring: any[][]) => {
+          ring.forEach(([lonCoord, latCoord]: any[]) => {
+            bounds.push([latCoord, lonCoord]);
+          });
+        });
+      });
     }
     
     return bounds;
@@ -126,14 +130,17 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
 
   // Re-render map bounds after polygon is rendered
   useEffect(() => {
-    if (polygonRendered && mapRef.current && leafletPolygons.length > 0) {
-      setTimeout(() => {
-        const bounds = getBounds();
-        mapRef.current.fitBounds(bounds as any, { padding: [20, 20] });
-        console.log('[MAP_ARTIFACT] Map bounds re-adjusted after polygon render');
-      }, 100);
+    if (polygonRendered && mapRef.current && zoneGeometry) {
+      const leafletCoords = convertGeoJSONToLeaflet(zoneGeometry.coordinates[0] || []);
+      if (leafletCoords.length > 0) {
+        setTimeout(() => {
+          const bounds = getBounds();
+          mapRef.current.fitBounds(bounds as any, { padding: [20, 20] });
+          console.log('[MAP_ARTIFACT] Map bounds re-adjusted after polygon render');
+        }, 100);
+      }
     }
-  }, [polygonRendered, leafletPolygons, lat, lon]);
+  }, [polygonRendered, zoneGeometry, lat, lon]);
 
   // Track rendering completion
   useEffect(() => {
@@ -141,7 +148,7 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
       return;
     }
 
-    const hasGeometry = leafletPolygons.length > 0;
+    const hasGeometry = zoneGeometry && zoneGeometry.type === 'MultiPolygon' && zoneGeometry.coordinates;
     const needsPolygon = hasGeometry;
     
     // Check if all required elements are rendered
@@ -155,7 +162,11 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
         onRenderComplete();
       }, 150);
     }
-  }, [mapCreated, markerRendered, polygonRendered, leafletPolygons, isLoading, lat, lon, onRenderComplete]);
+  }, [mapCreated, markerRendered, polygonRendered, zoneGeometry, isLoading, lat, lon, onRenderComplete]);
+
+  const leafletCoords = zoneGeometry && zoneGeometry.type === 'MultiPolygon' 
+    ? convertGeoJSONToLeaflet(zoneGeometry.coordinates[0] || [])
+    : [];
 
   if (isLoading) {
     return (
@@ -220,7 +231,7 @@ export function MapArtifact({ lat, lon, zoneGeometry, isLoading, onRenderComplet
         </Marker>
 
         {/* Zone polygon highlight - only render after delay */}
-        {shouldRenderPolygon && leafletPolygons.length > 0 && leafletPolygons.map((polygonCoords, index) => (
+        {shouldRenderPolygon && leafletCoords.length > 0 && leafletCoords.map((polygonCoords, index) => (
           <Polygon
             key={index}
             positions={polygonCoords}

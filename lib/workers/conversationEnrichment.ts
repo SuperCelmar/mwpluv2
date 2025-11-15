@@ -90,7 +90,6 @@ export async function enrichConversation(
   options?: EnrichConversationOptions
 ): Promise<EnrichmentResult> {
   const startTime = Date.now();
-  console.log('[ENRICHMENT_WORKER] Starting enrichment for conversation:', conversationId);
 
   // Initialize result structure
   const result: EnrichmentResult = {
@@ -149,69 +148,15 @@ export async function enrichConversation(
       throw new Error('Missing required data: insee_code, lon, or lat');
     }
 
-    console.log('[ENRICHMENT_WORKER] Context extracted:', { inseeCode, lon, lat, addressInput });
-
-    // Step 2: Create/ensure project and research_history exist
-    let projectId = conversation.project_id;
-    let researchId: string | null = null;
-
+    // Step 2: Validate project exists (should be created before enrichment)
+    const projectId = conversation.project_id;
     if (!projectId) {
-      console.log('[ENRICHMENT_WORKER] Creating project');
-      const { data: project, error: projectError } = await supabase
-        .from('v2_projects')
-        .insert({
-          user_id: conversation.user_id,
-          status: 'draft',
-          main_address: addressInput,
-          geo_lon: lon,
-          geo_lat: lat,
-        })
-        .select('id')
-        .single();
-
-      if (projectError || !project) {
-        throw new Error(`Failed to create project: ${projectError?.message}`);
-      }
-
-      projectId = project.id;
-      await supabase
-        .from('v2_conversations')
-        .update({ project_id: projectId })
-        .eq('id', conversationId);
-    }
-
-    // Check for existing research history
-    const { data: existingResearch } = await supabase
-      .from('v2_research_history')
-      .select('id')
-      .eq('conversation_id', conversationId)
-      .maybeSingle();
-
-    if (existingResearch) {
-      researchId = existingResearch.id;
-    } else {
-      console.log('[ENRICHMENT_WORKER] Creating research_history');
-      const { data: newResearch, error: researchError } = await supabase
-        .from('v2_research_history')
-        .insert({
-          user_id: conversation.user_id,
-          conversation_id: conversationId,
-          project_id: projectId,
-          address_input: addressInput,
-          geo_lon: lon,
-          geo_lat: lat,
-          success: true,
-        })
-        .select('id')
-        .single();
-
-      if (!researchError && newResearch) {
-        researchId = newResearch.id;
-      }
+      throw new Error(
+        'Conversation is missing project_id. Project and research_history must be created before enrichment runs.'
+      );
     }
 
     // Step 3: Fetch municipality first to determine branch flow
-    console.log('[ENRICHMENT_WORKER] Fetching municipality from API');
     const municipalityStart = Date.now();
     let municipality: any = null;
     try {
@@ -238,7 +183,6 @@ export async function enrichConversation(
     let zoneGeometry: any | null = null;
 
     if (!isRnu) {
-      console.log('[ENRICHMENT_WORKER] Fetching zones from API');
       const zonesStart = Date.now();
       try {
         zones = await fetchZoneUrba({ lon, lat });
@@ -251,9 +195,24 @@ export async function enrichConversation(
           zoneName = firstZone.properties?.libelong || firstZone.properties?.libelle || null;
           zoneGeometry = firstZone.geometry || null;
 
-          if (zoneGeometry) {
-            options?.onProgress?.({ mapGeometry: zoneGeometry }, { operation: 'map' });
+          // Zone geometry is mandatory at this step - must be rendered on the map
+          if (!zoneGeometry) {
+            throw new Error('Zone geometry is missing from zone-urba API response');
           }
+
+          // onProgress callback is mandatory for rendering zone geometry on map
+          if (!options?.onProgress) {
+            throw new Error('onProgress callback is required for zone geometry rendering');
+          }
+          // DEBUG
+          console.log('[ENRICHMENT_WORKER] onProgress mapGeometry', {
+            type: zoneGeometry.type,
+            hasCoordinates: !!zoneGeometry.coordinates,
+            coordsSample: JSON.stringify(zoneGeometry.coordinates?.[0]?.[0]),
+          });
+
+          // Mandatory: render zone geometry on map
+          options.onProgress({ mapGeometry: zoneGeometry }, { operation: 'map' });
         } else {
           throw new Error('No zones found');
         }
@@ -567,34 +526,32 @@ export async function enrichConversation(
     // Step 4: Update database with enriched data
     console.log('[ENRICHMENT_WORKER] Updating database with enriched data');
 
-    // Update research_history
-    if (researchId) {
-      const researchUpdate: Record<string, any> = {
-        geocoded_address: municipality?.properties?.name?.toLowerCase() || communeName,
-        branch_type: result.branchType,
-        has_analysis: result.documentData?.hasAnalysis || false,
-        is_rnu: isRnu,
-        primary_document_id: result.documentData?.documentId || null,
-      };
+    // Update research_history (update by conversation_id since it's created before enrichment)
+    const researchUpdate: Record<string, any> = {
+      geocoded_address: municipality?.properties?.name?.toLowerCase() || communeName,
+      branch_type: result.branchType,
+      has_analysis: result.documentData?.hasAnalysis || false,
+      is_rnu: isRnu,
+      primary_document_id: result.documentData?.documentId || null,
+    };
 
-      if (documentMetadataPayload) {
-        researchUpdate.document_metadata = documentMetadataPayload;
-      }
-      if (result.cityId) {
-        researchUpdate.city_id = result.cityId;
-      }
-      if (result.zoneId) {
-        researchUpdate.zone_id = result.zoneId;
-      }
-      if (result.documentData?.documentId) {
-        researchUpdate.documents_found = [result.documentData.documentId];
-      }
-
-      await supabase
-        .from('v2_research_history')
-        .update(researchUpdate)
-        .eq('id', researchId);
+    if (documentMetadataPayload) {
+      researchUpdate.document_metadata = documentMetadataPayload;
     }
+    if (result.cityId) {
+      researchUpdate.city_id = result.cityId;
+    }
+    if (result.zoneId) {
+      researchUpdate.zone_id = result.zoneId;
+    }
+    if (result.documentData?.documentId) {
+      researchUpdate.documents_found = [result.documentData.documentId];
+    }
+
+    await supabase
+      .from('v2_research_history')
+      .update(researchUpdate)
+      .eq('conversation_id', conversationId);
 
     if (result.documentData?.documentId) {
       await ensureDocumentLinks({

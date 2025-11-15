@@ -52,6 +52,11 @@ export function useEnrichment(
     if (!updates || Object.keys(updates).length === 0) {
       return;
     }
+    if (updates.mapGeometry) {
+      console.log('[USE_ENRICHMENT] mergeEnrichmentData mapGeometry set', {
+        hasGeometry: !!updates.mapGeometry,
+      });
+    }
     setEnrichmentData((prev) => ({
       ...prev,
       ...updates,
@@ -83,7 +88,7 @@ export function useEnrichment(
   const createLoaders = useCallback(() => {
     return {
       enrichment: async () => {
-        console.log('[USE_ENRICHMENT] Starting enrichment worker');
+
         setOverallStatus('enriching');
         
         try {
@@ -128,7 +133,7 @@ export function useEnrichment(
 
   // Use progressive loading to track enrichment
   const { status: loaderStatus, errors: loaderErrors, data: loaderData, refresh } = useProgressiveLoading(
-    needsEnrichment() && conversationData ? createLoaders() : {}
+    needsEnrichment() && conversationData ? createLoaders() : { enrichment: () => Promise.resolve({}) }
   );
 
   // Start enrichment when needed
@@ -137,7 +142,6 @@ export function useEnrichment(
     if (enrichmentInProgressRef.current) return;
     if (!needsEnrichment()) return;
 
-    console.log('[USE_ENRICHMENT] Enrichment needed, starting...');
     enrichmentInProgressRef.current = true;
     refresh('enrichment');
   }, [conversationData, needsEnrichment, refresh]);
@@ -174,7 +178,6 @@ export function useEnrichment(
 
   // Retry function
   const retry = useCallback(() => {
-    console.log('[USE_ENRICHMENT] Retrying enrichment');
     enrichmentInProgressRef.current = false;
     retryKeyRef.current += 1;
     setOverallStatus('pending');

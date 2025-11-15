@@ -339,7 +339,6 @@ export async function checkDuplicateByCoordinates(
   lat: number,
   userId: string
 ): Promise<DuplicateCheckResult> {
-  console.log('[DUPLICATE_CHECK] checkDuplicateByCoordinates called:', { lon, lat, userId });
 
   try {
     // First try RPC function if it exists (requires PostGIS migration)
@@ -351,15 +350,12 @@ export async function checkDuplicateByCoordinates(
     });
 
     if (!rpcError && rpcData && rpcData.length > 0 && rpcData[0]?.conversation_id) {
-      console.log('[DUPLICATE_CHECK] Duplicate found via RPC, conversation_id:', rpcData[0].conversation_id);
       return await getDuplicateResultForConversation(rpcData[0].conversation_id);
     }
 
     // Fallback: query recent records and calculate distance client-side
-    console.log('[DUPLICATE_CHECK] RPC not available or no match, using fallback method');
     return await checkDuplicateByCoordinatesFallback(lon, lat, userId);
   } catch (error) {
-    console.error('[DUPLICATE_CHECK] Error in checkDuplicateByCoordinates:', error);
     // Fallback on error
     return await checkDuplicateByCoordinatesFallback(lon, lat, userId);
   }
@@ -392,7 +388,6 @@ async function checkDuplicateByCoordinatesFallback(
     }
 
     if (!data || data.length === 0) {
-      console.log('[DUPLICATE_CHECK] No records with coordinates found');
       return { exists: false };
     }
 
@@ -407,16 +402,13 @@ async function checkDuplicateByCoordinatesFallback(
         );
 
         if (distance <= 50) {
-          console.log('[DUPLICATE_CHECK] Duplicate found via fallback, distance:', distance.toFixed(2), 'm');
           return await getDuplicateResultForConversation(record.conversation_id!);
         }
       }
     }
 
-    console.log('[DUPLICATE_CHECK] No duplicate found within 50m');
     return { exists: false };
   } catch (error) {
-    console.error('[DUPLICATE_CHECK] Error in fallback:', error);
     return { exists: false };
   }
 }

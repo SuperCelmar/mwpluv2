@@ -52,7 +52,7 @@ Once the lightweight conversation and untitled project are created:
 - Right aside the Assistant avatar, you'd have the first loading message: "Vérification de la zone concernée..."
 - In the meantime, the system uses the point coordinates of the address api, previously collected in the first step, to display the map, using leaflet.
 - Effectively, the right panel slides in, showing the map with the address marker.
-- Just after that moment, using the point coordinates, the system will call the municipality API `https://apicarto.ign.fr/api/gpu/zone-urba` 
+- Just after that moment, using the point coordinates, the system will call the municipality API `https://apicarto.ign.fr/api/gpu/municipality` 
 This will get: for example:
 
 ```json

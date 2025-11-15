@@ -2,32 +2,51 @@ import type { QueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 
 /**
- * Creates a lightweight conversation record for instant navigation
- * Stores only essential data (user_id, address, coordinates) in context_metadata
- * Does NOT create project, does NOT fetch API data, does NOT enrich geo data
+ * Creates a lightweight conversation AND project together
+ * Used for the transition page flow where both are needed before navigation
  * 
  * @param userId - User ID
  * @param address - Address string from address suggestion
  * @param coordinates - GPS coordinates { lon, lat }
- * @returns Promise with conversationId
+ * @param inseeCode - INSEE code (optional)
+ * @param city - City name (optional)
+ * @returns Promise with conversationId and projectId
  */
-export async function createLightweightConversation(
+export async function createLightweightConversationWithProject(
   userId: string,
   address: string,
   coordinates: { lon: number; lat: number },
   inseeCode?: string,
   city?: string
-): Promise<{ conversationId: string }> {
-  console.log('[LIGHTWEIGHT_CONV] Creating lightweight conversation:', { userId, address, coordinates });
+): Promise<{ conversationId: string; projectId: string }> {
 
+  // Step 1: Create project first
+  const { data: project, error: projectError } = await supabase
+    .from('v2_projects')
+    .insert({
+      user_id: userId,
+      status: 'draft',
+      main_address: address,
+      geo_lon: coordinates.lon,
+      geo_lat: coordinates.lat,
+    })
+    .select('id')
+    .single();
+
+  if (projectError || !project) {
+    console.error('[LIGHTWEIGHT_CONV_WITH_PROJECT] Error creating project:', projectError);
+    throw new Error(`Failed to create project: ${projectError?.message || 'Unknown error'}`);
+  }
+
+
+  // Step 2: Create conversation linked to project
   const defaultTitle = city && address ? `${city}_${address.split(',')[0]}` : address;
 
-  // Create minimal conversation record
-  const { data: conversation, error } = await supabase
+  const { data: conversation, error: conversationError } = await supabase
     .from('v2_conversations')
     .insert({
       user_id: userId,
-      project_id: null, // Will be created during enrichment
+      project_id: project.id,
       conversation_type: 'address_analysis',
       title: defaultTitle,
       context_metadata: {
@@ -55,13 +74,33 @@ export async function createLightweightConversation(
     .select('id')
     .single();
 
-  if (error || !conversation) {
-    console.error('[LIGHTWEIGHT_CONV] Error creating conversation:', error);
-    throw new Error(`Failed to create conversation: ${error?.message || 'Unknown error'}`);
+  if (conversationError || !conversation) {
+    console.error('[LIGHTWEIGHT_CONV_WITH_PROJECT] Error creating conversation:', conversationError);
+    // Try to clean up project if conversation creation fails
+    await supabase.from('v2_projects').delete().eq('id', project.id);
+    throw new Error(`Failed to create conversation: ${conversationError?.message || 'Unknown error'}`);
   }
 
-  console.log('[LIGHTWEIGHT_CONV] Conversation created successfully, id:', conversation.id);
-  return { conversationId: conversation.id };
+  // Step 3: Create initial address message
+  const { error: messageError } = await supabase
+    .from('v2_messages')
+    .insert({
+      conversation_id: conversation.id,
+      user_id: userId,
+      role: 'user',
+      message: address,
+      message_type: 'address_search',
+      conversation_turn: 1,
+      created_at: new Date().toISOString(),
+    });
+
+  if (messageError) {
+    console.error('[LIGHTWEIGHT_CONV_WITH_PROJECT] Error creating initial message:', messageError);
+    // Don't fail the whole operation, but log the error
+    // The message can be created later if needed
+  }
+
+  return { conversationId: conversation.id, projectId: project.id };
 }
 
 interface CreateResearchHistoryParams {
@@ -79,13 +118,6 @@ export async function createInitialResearchHistoryEntry({
   coordinates,
   projectId = null,
 }: CreateResearchHistoryParams): Promise<void> {
-  console.log('[RESEARCH_HISTORY] Creating initial research history entry:', {
-    userId,
-    conversationId,
-    projectId,
-    addressInput,
-  });
-
   try {
     const { data: existingEntry, error: lookupError } = await supabase
       .from('v2_research_history')
@@ -98,7 +130,6 @@ export async function createInitialResearchHistoryEntry({
     }
 
     if (existingEntry) {
-      console.log('[RESEARCH_HISTORY] Entry already exists, skipping creation');
       return;
     }
 
@@ -119,8 +150,6 @@ export async function createInitialResearchHistoryEntry({
 
     if (insertError) {
       console.error('[RESEARCH_HISTORY] Failed to insert entry:', insertError);
-    } else {
-      console.log('[RESEARCH_HISTORY] Initial entry created successfully');
     }
   } catch (error) {
     console.error('[RESEARCH_HISTORY] Unexpected error creating entry:', error);

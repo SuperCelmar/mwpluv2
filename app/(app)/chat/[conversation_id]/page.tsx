@@ -146,45 +146,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const cityNameFromContext = conversationContextMetadata?.city || enrichmentCache?.city_name || '';
   const inseeCodeFromContext = conversationContextMetadata?.insee_code || enrichmentCache?.insee_code || '';
 
-  // Compute messages with initial address message if needed
+  // Messages come directly from the database - no synthetic messages needed
   const messages = useMemo(() => {
-    if (!conversation || messagesData.length > 0) {
-      return messagesData;
-    }
-
-    // Add initial address as first message if it exists and no messages yet
-    const initialAddress = conversationContextMetadata?.initial_address;
-    if (initialAddress) {
-      const addressMessage: V2Message = {
-        id: `initial-address-${conversation.id}`,
-        conversation_id: params.conversation_id,
-        user_id: userId!,
-        role: 'user',
-        message: initialAddress,
-        message_type: 'address_search',
-        conversation_turn: 1,
-        referenced_documents: null,
-        referenced_zones: null,
-        referenced_cities: null,
-        search_context: null,
-        intent_detected: null,
-        confidence_score: null,
-        ai_model_used: null,
-        reply_to_message_id: null,
-        metadata: null,
-        created_at: conversation.created_at || new Date().toISOString(),
-      };
-      return [addressMessage];
-    }
-
     return messagesData;
-  }, [
-    conversation,
-    messagesData,
-    params.conversation_id,
-    userId,
-    conversationContextMetadata?.initial_address,
-  ]);
+  }, [messagesData]);
 
   const isFirstMessage = messages.length === 0 || (messages.length === 1 && messages[0].message_type === 'address_search');
 
@@ -284,8 +249,16 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     if (enrichmentCache?.zone_geometry) {
       return enrichmentCache.zone_geometry;
     }
-    const zoneGeometry = (zoneData as any)?.geometry;
-    return zoneGeometry || null;
+    const fromEnrichment = enrichment.data.mapGeometry;
+    const fromCache = enrichmentCache?.zone_geometry;
+    const fromZone = (zoneData as any)?.geometry;
+  
+    console.log('[PAGE] resolvedMapGeometry sources', {
+      fromEnrichment: !!fromEnrichment,
+      fromCache: !!fromCache,
+      fromZone: !!fromZone,
+    });
+    return fromEnrichment ?? fromCache ?? fromZone ?? null;
   }, [enrichment.data.mapGeometry, enrichmentCache?.zone_geometry, zoneData]);
 
   const { data: persistedDocument } = useQuery<MinimalDocument | null>({
@@ -308,19 +281,29 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     const lat = conversationContextMetadata?.geocoded?.lat;
     const mapGeometry = resolvedMapGeometry;
 
+    console.log('[PAGE] map sync effect', {
+      lon,
+      lat,
+      hasGeometry: !!mapGeometry,
+      geometryType: mapGeometry?.type,
+    });
     // Initialize map artifact when coordinates are available
     // Works for both active enrichment and completed conversations
     if (lon !== undefined && lat !== undefined) {
       const currentMap = artifacts.map;
-      
+      console.log('[PAGE] currentMap artifact before update', {
+        hasArtifact: !!currentMap,
+        currentGeometry: !!(currentMap?.data as any)?.geometry,
+      });
+    
       // Initialize map with just coordinates if we don't have geometry yet
-    const mapData: MapArtifactData = {
-      center: { lat, lon },
-      geometry: mapGeometry || undefined,
-      cityName: cityNameFromContext || enrichmentCache?.city_name || '',
-      zoneName: zoneName || enrichmentCache?.zone_name || undefined,
-      zoneLibelle: conversationDocumentMetadata?.zone_name || undefined,
-    };
+      const mapData: MapArtifactData = {
+        center: { lat, lon },
+        geometry: mapGeometry || undefined,
+        cityName: cityNameFromContext || enrichmentCache?.city_name || '',
+        zoneName: zoneName || enrichmentCache?.zone_name || undefined,
+        zoneLibelle: conversationDocumentMetadata?.zone_name || undefined,
+      };
 
       // If map doesn't exist yet, initialize it with coordinates
       if (!currentMap) {
@@ -331,23 +314,20 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         });
       } else {
         const currentMapData = currentMap.data as MapArtifactData | undefined;
-        if (mapGeometry && currentMapData && !currentMapData.geometry) {
-          // Update with geometry when it arrives
+        
+        if (currentMapData) {
+          // Always update when map artifact exists - this ensures zone geometry 
+          // renders immediately when onProgress is called with mapGeometry
+          // Use new geometry if available, otherwise keep existing geometry
           updateArtifactState('map', {
             status: 'ready',
             data: {
               ...currentMapData,
-              geometry: mapGeometry,
-            },
-            renderingStatus: 'pending',
-          });
-        } else if (currentMapData && !currentMapData.geometry && mapGeometry) {
-          // Update geometry if it wasn't set before
-          updateArtifactState('map', {
-            status: 'ready',
-            data: {
-              ...currentMapData,
-              geometry: mapGeometry,
+              center: { lat, lon },
+              geometry: mapGeometry ?? currentMapData.geometry, // Prioritize new geometry (use ?? to handle null/undefined)
+              cityName: cityNameFromContext || enrichmentCache?.city_name || '',
+              zoneName: zoneName || enrichmentCache?.zone_name || undefined,
+              zoneLibelle: conversationDocumentMetadata?.zone_name || undefined,
             },
             renderingStatus: 'pending',
           });
@@ -356,6 +336,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [
     resolvedMapGeometry,
+    enrichment.data.mapGeometry, // Direct dependency to ensure updates when onProgress is called
     zoneData,
     enrichment.status,
     conversation,
@@ -745,9 +726,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     const hasCoordinates = contextMetadata?.geocoded?.lon !== undefined && 
                           contextMetadata?.geocoded?.lat !== undefined;
     const hasAddressMessage = messages.some(msg => msg.message_type === 'address_search');
-    const isEnriching = enrichment.status === 'enriching' || 
-                       conversation?.enrichment_status === 'pending' ||
-                       conversation?.enrichment_status === 'in_progress';
     const isCompleted = conversation?.enrichment_status === 'completed';
 
     // Don't auto-open for completed conversations
@@ -755,13 +733,15 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       return;
     }
 
-    if (hasCoordinates && hasAddressMessage && isEnriching && !isPanelOpen && !hasAutoOpenedPanelRef.current) {
-      console.log('[CHAT_PAGE] Auto-opening panel - coordinates received');
+    // Open panel immediately when coordinates are available (before enrichment starts)
+    // This matches NEW_CHAT_EXP.md: map should display immediately with address marker
+    if (hasCoordinates && hasAddressMessage && !isPanelOpen && !hasAutoOpenedPanelRef.current) {
+      console.log('[CHAT_PAGE] Auto-opening panel - coordinates available (before enrichment)');
       hasAutoOpenedPanelRef.current = true;
       setIsPanelOpen(true);
       setArtifactTab('map');
     }
-  }, [conversation, messages, enrichment.status, conversationContextMetadata, isPanelOpen, setArtifactTab]);
+  }, [conversation, messages, conversationContextMetadata, isPanelOpen, setArtifactTab]);
 
   // Handle map rendering completion
   const handleMapRenderComplete = () => {

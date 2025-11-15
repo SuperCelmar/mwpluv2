@@ -11,8 +11,6 @@ import {
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { AddressSuggestion, searchAddress } from '@/lib/address-api';
 import {
-  createLightweightConversation,
-  createInitialResearchHistoryEntry,
   prefetchConversationForRedirect,
 } from '@/lib/supabase/queries';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -253,30 +251,23 @@ export default function Home() {
         console.log('[DUPLICATE_CHECK] No duplicate found, creating new conversation');
       }
 
-      // Step 2: Create lightweight conversation (instant - no API calls, no DB enrichment)
-      console.log('[LIGHTWEIGHT_CONV] Creating lightweight conversation');
-      const { conversationId } = await createLightweightConversation(
-        userId,
-        addressLabel,
-        { lon: lon!, lat: lat! },
-        inseeCode,
-        address.properties.city
-      );
-
-      console.log('[LIGHTWEIGHT_CONV] Conversation created, id:', conversationId);
-
-      await createInitialResearchHistoryEntry({
-        userId,
-        conversationId,
-        addressInput: addressLabel,
-        coordinates: { lon: lon!, lat: lat! },
-        projectId: null,
-      });
-
-      // Step 3: Navigate immediately (enrichment happens in background on chat page)
-      console.log('[NAVIGATION] Navigating immediately to chat page:', `/chat/${conversationId}`);
+      // Step 2: Navigate to transition page (conversation and project will be created there)
+      console.log('[NAVIGATION] Navigating to transition page');
       resetDuplicateState();
-      router.push(`/chat/${conversationId}`);
+      
+      // Build URL with address data as query params
+      const transitionUrl = new URL('/chat/new', window.location.origin);
+      transitionUrl.searchParams.set('address', addressLabel);
+      transitionUrl.searchParams.set('lon', lon!.toString());
+      transitionUrl.searchParams.set('lat', lat!.toString());
+      if (inseeCode) {
+        transitionUrl.searchParams.set('inseeCode', inseeCode);
+      }
+      if (address.properties.city) {
+        transitionUrl.searchParams.set('city', address.properties.city);
+      }
+      
+      router.push(transitionUrl.pathname + transitionUrl.search);
     } catch (error) {
       console.error('[ERROR] Error in address submit handler:', error);
       toast({

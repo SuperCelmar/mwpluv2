@@ -146,26 +146,21 @@ export async function fetchZoneUrba(params: {
 }): Promise<CartoZone[]> {
   const { lon, lat, insee_code } = params;
   
-  console.log('[API_CALL] fetchZoneUrba called with params:', { lon, lat, insee_code });
   
   let url = 'https://apicarto.ign.fr/api/gpu/zone-urba?';
   
   if (lon !== undefined && lat !== undefined) {
     url += `geom=${encodeURIComponent(JSON.stringify({ type: 'Point', coordinates: [lon, lat] }))}`;
-    console.log('[API_CALL] fetchZoneUrba using coordinates:', { lon, lat });
   } else if (insee_code) {
     url += `code_insee=${insee_code}`;
-    console.log('[API_CALL] fetchZoneUrba using INSEE code:', insee_code);
   } else {
     console.error('[API_CALL] fetchZoneUrba error: Must provide either lon/lat or insee_code');
     throw new Error('Must provide either lon/lat or insee_code');
   }
   
-  console.log('[API_CALL] fetchZoneUrba API URL:', url);
   
   const response = await fetch(url);
   
-  console.log('[API_CALL] fetchZoneUrba response status:', response.status);
   
   if (!response.ok) {
     console.error('[API_CALL] fetchZoneUrba API returned error status:', response.status);
@@ -173,9 +168,7 @@ export async function fetchZoneUrba(params: {
   }
   
   const data = await response.json();
-  console.log('[API_CALL] fetchZoneUrba JSON response:', JSON.stringify(data, null, 2));
   const zones = data.features || [];
-  console.log('[API_CALL] fetchZoneUrba completed, zones count:', zones.length);
   
   return zones;
 }
@@ -233,25 +226,20 @@ export async function fetchMunicipality(
   let lon: number | undefined;
   let lat: number | undefined;
   
-  console.log('[API_CALL] fetchMunicipality called with:', typeof paramsOrCode === 'string' ? paramsOrCode : paramsOrCode);
   
   if (typeof paramsOrCode === 'string') {
     insee_code = paramsOrCode;
-    console.log('[API_CALL] fetchMunicipality using INSEE code (string):', insee_code);
   } else {
     insee_code = paramsOrCode.insee_code;
     lon = paramsOrCode.lon;
     lat = paramsOrCode.lat;
-    console.log('[API_CALL] fetchMunicipality using params:', { insee_code, lon, lat });
   }
   
   if (insee_code) {
     const url = `https://apicarto.ign.fr/api/gpu/municipality?insee=${insee_code}`;
-    console.log('[API_CALL] fetchMunicipality API URL (INSEE):', url);
     
     const response = await fetch(url);
     
-    console.log('[API_CALL] fetchMunicipality response status (INSEE):', response.status);
     
     if (!response.ok) {
       console.error('[API_CALL] fetchMunicipality API returned error status:', response.status);
@@ -259,26 +247,15 @@ export async function fetchMunicipality(
     }
     
     const data = await response.json();
-    console.log('[API_CALL] fetchMunicipality JSON response (INSEE):', JSON.stringify(data, null, 2));
     const municipality = data.features?.[0] || null;
-    
-    if (municipality) {
-      console.log('[API_CALL] fetchMunicipality completed, municipality found:', municipality.properties?.name);
-    } else {
-      console.log('[API_CALL] fetchMunicipality completed, no municipality found');
-    }
-    
+        
     return municipality;
   } else if (lon !== undefined && lat !== undefined) {
     // Municipality API also supports geom parameter
     const url = `https://apicarto.ign.fr/api/gpu/municipality?` +
       `geom=${encodeURIComponent(JSON.stringify({ type: 'Point', coordinates: [lon, lat] }))}`;
-    console.log('[API_CALL] fetchMunicipality API URL (coordinates):', url);
-    console.log('[API_CALL] fetchMunicipality using coordinates:', { lon, lat });
     
     const response = await fetch(url);
-    
-    console.log('[API_CALL] fetchMunicipality response status (coordinates):', response.status);
     
     if (!response.ok) {
       console.log('[API_CALL] fetchMunicipality API returned error status (coordinates), returning null:', response.status);
@@ -286,14 +263,7 @@ export async function fetchMunicipality(
     }
     
     const data = await response.json();
-    console.log('[API_CALL] fetchMunicipality JSON response (coordinates):', JSON.stringify(data, null, 2));
     const municipality = data.features?.[0] || null;
-    
-    if (municipality) {
-      console.log('[API_CALL] fetchMunicipality completed (coordinates), municipality found:', municipality.properties?.name);
-    } else {
-      console.log('[API_CALL] fetchMunicipality completed (coordinates), no municipality found');
-    }
     
     return municipality;
   } else {

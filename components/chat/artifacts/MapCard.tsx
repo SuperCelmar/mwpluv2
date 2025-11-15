@@ -19,6 +19,12 @@ interface MapCardProps {
   status: 'skeleton' | 'loading' | 'ready' | 'error';
   className?: string;
   onRenderComplete?: () => void;
+  /**
+   * When false, delays rendering MapArtifact and shows skeleton instead.
+   * When true (default), renders MapArtifact immediately.
+   * Used to wait for panel slide-in animation to complete (prevents map rendering issues).
+   */
+  canRender?: boolean;
 }
 
 export function MapCard({ 
@@ -27,7 +33,8 @@ export function MapCard({
   onRetry,
   status, 
   className,
-  onRenderComplete
+  onRenderComplete,
+  canRender = true // Default to true (can render immediately) for backwards compatibility
 }: MapCardProps) {
   const handleRetry = () => {
     if (onRetry) {
@@ -91,7 +98,21 @@ export function MapCard({
   }
 
   // Ready state - show actual map
+  // But delay MapArtifact rendering until panel animation completes to prevent rendering issues
   if (status === 'ready' && data) {
+    // Show skeleton while waiting for animation to complete
+    if (!canRender) {
+      return (
+        <div className={cn(
+          'transition-opacity duration-300',
+          'h-full w-full',
+          className
+        )}>
+          <ArtifactSkeleton type="map" className="h-full" />
+        </div>
+      );
+    }
+
     return (
       <div className={cn(
         'h-full w-full transition-all duration-300 ease-in-out',

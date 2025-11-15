@@ -1,5 +1,71 @@
 # Changelog
 
+## 2025-01-XX - Fix Initial Address Message Persistence
+
+### Fixed
+- **Initial address message persistence**: Fixed issue where the initial address message was not being saved to the database
+  - The synthetic message with ID `initial-address-${conversation.id}` was only created in memory and disappeared after page refresh
+  - The ID format was not a valid UUID, preventing database insertion
+  - Now the initial address message is properly saved to `v2_messages` table when conversations are created
+
+### Changed
+- **lib/supabase/queries.ts**: Updated `createLightweightConversationWithProject()` to save initial address message to database
+  - Creates the address message with proper UUID and `message_type: 'address_search'`
+  - Sets `conversation_turn: 1` for proper ordering
+  - Error handling logs but doesn't fail the conversation creation if message insert fails
+
+- **app/(app)/project/[id]/page.tsx**: Updated conversation creation mutation to save initial address message
+  - Same pattern as above - saves message after conversation creation
+  - Ensures consistency across all conversation creation flows
+
+- **app/(app)/chat/[conversation_id]/page.tsx**: Removed synthetic message logic
+  - Removed the `useMemo` that created synthetic messages with invalid IDs
+  - Messages now come directly from the database query
+  - Simplified code since messages are always persisted
+
+### Technical Details
+- Initial address messages are now persisted with proper UUIDs from `gen_random_uuid()`
+- Messages are saved atomically with conversation creation
+- The synthetic message fallback is no longer needed since all messages come from the database
+- This ensures the initial address message persists across page refreshes and is visible even after enrichment completes
+
+### Files Modified
+- Modified `lib/supabase/queries.ts` - Added initial message creation
+- Modified `app/(app)/project/[id]/page.tsx` - Added initial message creation
+- Modified `app/(app)/chat/[conversation_id]/page.tsx` - Removed synthetic message logic
+
+## 2025-01-XX - Transition Page Implementation
+
+### Added
+- **Transition Page Flow**: New transition page at `/chat/new` that shows skeleton UI before creating conversation and project
+  - Transition page displays the input address as the first user message
+  - Shows assistant avatar (no message, just icon) during transition
+  - Empty breadcrumb header (skeleton state) during transition
+  - Creates both lightweight conversation AND project before navigating to chat page
+  - New `createLightweightConversationWithProject()` function in `lib/supabase/queries.ts` that creates both entities atomically
+
+### Changed
+- **app/(app)/page.tsx**: Modified `handleAddressSubmit` to navigate to transition page instead of directly creating conversation
+  - Removed direct conversation creation from address submission
+  - Now navigates to `/chat/new` with address data as query parameters
+  - Transition page handles conversation and project creation
+
+- **lib/supabase/queries.ts**: Added `createLightweightConversationWithProject()` function
+  - Creates project first, then conversation linked to project
+  - Includes cleanup logic to delete project if conversation creation fails
+  - Returns both `conversationId` and `projectId` for navigation
+
+### Technical Details
+- Transition page uses URL query params to pass address data (address, lon, lat, inseeCode, city)
+- Project is created with `status: 'draft'` and linked to conversation immediately
+- Navigation to `/chat/[conversation_id]` happens only after both IDs are available
+- Enrichment worker still handles project creation for backward compatibility (checks if project_id exists)
+
+### Files Modified
+- Created `app/(app)/chat/new/page.tsx` - New transition page
+- Modified `app/(app)/page.tsx` - Updated navigation flow
+- Modified `lib/supabase/queries.ts` - Added conversation+project creation function
+
 # Changelog
 
 ## 2025-11-15 - Step 7 Chat Input & Webhook

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { X, FileText, Map, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,41 @@ export function ChatRightPanel({
   onMapRenderComplete,
   onDocumentRenderComplete
 }: ChatRightPanelProps) {
+  // Track when panel slide-in animation completes (300ms duration)
+  const [isAnimationComplete, setIsAnimationComplete] = useState(false);
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevIsOpenRef = useRef(isOpen);
+
+  // Reset animation completion when panel closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAnimationComplete(false);
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+        animationTimeoutRef.current = null;
+      }
+      prevIsOpenRef.current = false;
+      return;
+    }
+
+    // When panel opens, wait for animation to complete (300ms + small buffer)
+    if (isOpen && !prevIsOpenRef.current) {
+      setIsAnimationComplete(false);
+      animationTimeoutRef.current = setTimeout(() => {
+        setIsAnimationComplete(true);
+        animationTimeoutRef.current = null;
+      }, 350); // 300ms animation + 50ms buffer
+    }
+
+    prevIsOpenRef.current = isOpen;
+
+    return () => {
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+    };
+  }, [isOpen]);
+
   // Map artifact state
   const mapArtifactState = artifacts.map;
   const mapStatus: ArtifactStatus = mapArtifactState
@@ -55,6 +91,14 @@ export function ChatRightPanel({
       }
     : null;
 
+    console.log('[PANEL] mapData', {
+      hasArtifact: !!mapArtifactState,
+      hasGeometry: !!mapData?.zoneGeometry,
+      geometryType: mapData?.zoneGeometry?.type,
+      geometryCoordinatesLength: mapData?.zoneGeometry?.coordinates?.length,
+      rawGeometry: JSON.stringify(mapData?.zoneGeometry),
+    });
+    
   // Document artifact state
   const documentArtifactState = artifacts.document;
   const documentStatus: ArtifactStatus = documentArtifactState
@@ -182,6 +226,7 @@ export function ChatRightPanel({
                     status={mapStatus}
                     className="h-full"
                     onRenderComplete={onMapRenderComplete}
+                    canRender={isAnimationComplete}
                   />
                 </div>
               )}

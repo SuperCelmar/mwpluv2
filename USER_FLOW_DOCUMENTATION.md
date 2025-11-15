@@ -36,9 +36,9 @@ This document provides a comprehensive guide to the user experience and technica
   - Calls `searchAddress` API function
   - Updates suggestions state
 
-**File**: `components/InitialAddressInput.tsx`
+**File**: `components/AddressInput.tsx`
 
-- **Lines 22-49**: `useEffect` hook for debounced address search
+- **Lines 21-30**: `useDebounce` hook for debounced address search
   - 300ms debounce timer
   - Calls `searchAddress` when query length >= 3
   - Updates suggestions and loading state
@@ -61,12 +61,6 @@ This document provides a comprehensive guide to the user experience and technica
   - Updates input query with full address label
   - Hides suggestions dropdown
 
-**File**: `components/InitialAddressInput.tsx`
-
-- **Lines 51-64**: `handleSelect` function
-  - Updates query with selected address label
-  - Hides suggestions
-  - Sets selectedAddress state
 
 ---
 
