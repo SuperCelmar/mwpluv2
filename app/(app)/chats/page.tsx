@@ -378,7 +378,7 @@ export default function ChatsPage() {
       <DeleteConversationDialog
         open={deleteDialogOpen}
         onOpenChange={(open) => {
-          if (!open && !deleting) {
+          if (!open && !deleteMutation.isPending) {
             setDeleteDialogOpen(false);
             setConversationToDelete(null);
             setProjectName(null);

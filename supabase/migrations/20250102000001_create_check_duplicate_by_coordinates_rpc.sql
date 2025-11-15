@@ -59,9 +59,5 @@ $$;
 GRANT EXECUTE ON FUNCTION check_duplicate_by_coordinates TO authenticated;
 
 -- Comments for documentation
-COMMENT ON FUNCTION check_duplicate_by_coordinates IS 'Finds duplicate research history entries within specified distance using PostGIS ST_DWithin. Returns conversation_id if duplicate found.';
-COMMENT ON PARAMETER check_duplicate_by_coordinates.p_lon IS 'Longitude of the search point (WGS84)';
-COMMENT ON PARAMETER check_duplicate_by_coordinates.p_lat IS 'Latitude of the search point (WGS84)';
-COMMENT ON PARAMETER check_duplicate_by_coordinates.p_user_id IS 'User ID to filter research history';
-COMMENT ON PARAMETER check_duplicate_by_coordinates.p_distance_meters IS 'Distance threshold in meters (default: 50)';
+COMMENT ON FUNCTION check_duplicate_by_coordinates IS 'Finds duplicate research history entries within specified distance using PostGIS ST_DWithin. Returns conversation_id if duplicate found. Parameters: p_lon (Longitude WGS84), p_lat (Latitude WGS84), p_user_id (User ID to filter), p_distance_meters (Distance threshold in meters, default: 50)';
 

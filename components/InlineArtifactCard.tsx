@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { MapPin, Map, FileText, Loader2, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -250,6 +250,17 @@ function MapInlineCard({
     return bounds;
   };
 
+  // Handle map creation and fit bounds
+  const handleMapCreated = (map: any) => {
+    mapRef.current = map;
+    if (map && leafletCoords.length > 0) {
+      setTimeout(() => {
+        const bounds = getBounds();
+        map.fitBounds(bounds as any, { padding: [10, 10] });
+      }, 100);
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div
@@ -348,14 +359,7 @@ function MapInlineCard({
               touchZoom={false}
               boxZoom={false}
               keyboard={false}
-              ref={(map) => {
-                if (map && leafletCoords.length > 0) {
-                  setTimeout(() => {
-                    const bounds = getBounds();
-                    map.fitBounds(bounds as any, { padding: [10, 10] });
-                  }, 100);
-                }
-              }}
+              whenCreated={handleMapCreated}
             >
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
