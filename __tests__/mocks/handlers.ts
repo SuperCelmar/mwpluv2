@@ -28,6 +28,8 @@ let projectIdCounter = 1;
 let v2ConversationIdCounter = 1;
 let v2MessageIdCounter = 1;
 let researchIdCounter = 1;
+let chatApiRequests: any[] = [];
+let n8nWebhookRequests: any[] = [];
 
 const mockProfiles = [
   {
@@ -58,7 +60,19 @@ export const resetMockData = () => {
   v2ConversationIdCounter = 1;
   v2MessageIdCounter = 1;
   researchIdCounter = 1;
+  chatApiRequests = [];
+  n8nWebhookRequests = [];
 };
+
+export const getChatApiRequests = () => chatApiRequests;
+export const getN8nWebhookRequests = () => n8nWebhookRequests;
+export const recordChatApiRequest = (payload: any) => {
+  chatApiRequests.push(payload);
+};
+export const recordN8nWebhookRequest = (payload: any) => {
+  n8nWebhookRequests.push(payload);
+};
+export const getV2MessagesStore = () => mockV2Messages;
 
 
 // Helper function to parse PostgREST filter format (e.g., "id=eq.value")
@@ -94,6 +108,9 @@ export const handlers = [
     };
     mockConversations.push(newConversation);
     return HttpResponse.json([newConversation]);
+  }),
+  http.post('*/rest/v1/chat_events', async () => {
+    return HttpResponse.json({});
   }),
 
   // Supabase REST: Get conversations
@@ -273,9 +290,23 @@ export const handlers = [
     });
   }),
 
-  // N8N Webhook
-  http.post('https://n8n.automationdfy.com/webhook/api/chat', async ({ request }) => {
+  // Chat API proxy (client -> /api/chat)
+  http.post('*/api/chat', async ({ request }) => {
     const body = await request.json() as any;
+    recordChatApiRequest(body);
+
+    const response =
+      body?.message && typeof body.message === 'string'
+        ? `Mock assistant: ${body.message}`
+        : 'Mock assistant response';
+
+    return HttpResponse.json({ message: response });
+  }),
+
+  // N8N Webhook
+  http.post('https://n8n.automationdfy.com/webhook/mwplu/chat', async ({ request }) => {
+    const body = await request.json() as any;
+    recordN8nWebhookRequest(body);
 
     // Mock AI response
     const response = `Merci pour votre question concernant "${body.address || 'votre adresse'}".

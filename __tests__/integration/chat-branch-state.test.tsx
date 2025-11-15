@@ -169,4 +169,87 @@ describe('ChatConversationPage branch-driven states', () => {
     expect(promptBoxProps?.disabled).toBe(true);
     expect(promptBoxProps?.disabledTooltip).toBe('Impossible de discuter avec ce document.');
   });
+
+  it('falls back to research history branch metadata when conversation branch is pending', async () => {
+    mockUseEnrichment.mockReturnValue({
+      status: 'pending',
+      retry: vi.fn(),
+      progress: {
+        enrichment: 'loading',
+        zones: 'loading',
+        municipality: 'loading',
+        city: 'loading',
+        zoning: 'loading',
+        zone: 'loading',
+        document: 'loading',
+        map: 'loading',
+      },
+      data: {},
+    } as UseEnrichmentReturn);
+
+    const researchEntry = createMockV2ResearchHistory({
+      conversation_id: 'conversation-branch',
+      branch_type: 'non_rnu_source',
+      has_analysis: false,
+    });
+
+    const pendingConversation = createMockV2Conversation({
+      id: 'conversation-branch',
+      project_id: 'project-branch',
+      branch_type: 'pending',
+    });
+
+    server.use(
+      http.get('*/rest/v1/v2_conversations', () => HttpResponse.json([pendingConversation])),
+      http.get('*/rest/v1/v2_messages', () => HttpResponse.json([])),
+      http.get('*/rest/v1/v2_research_history', () => HttpResponse.json([researchEntry]))
+    );
+
+    renderPage();
+
+    await waitFor(() => expect(promptBoxProps).not.toBeNull());
+    expect(promptBoxProps?.disabled).toBe(true);
+    expect(promptBoxProps?.disabledTooltip).toBe('Impossible de discuter avec ce document.');
+  });
+
+  it('prefers document metadata branch type when conversation branch is pending', async () => {
+    mockUseEnrichment.mockReturnValue({
+      status: 'pending',
+      retry: vi.fn(),
+      progress: {
+        enrichment: 'loading',
+        zones: 'loading',
+        municipality: 'loading',
+        city: 'loading',
+        zoning: 'loading',
+        zone: 'loading',
+        document: 'loading',
+        map: 'loading',
+      },
+      data: {},
+    } as UseEnrichmentReturn);
+
+    const conversationWithMetadata = createMockV2Conversation({
+      id: 'conversation-branch',
+      project_id: 'project-branch',
+      branch_type: 'pending',
+      document_metadata: {
+        branch_type: 'non_rnu_analysis',
+        panel_state: { active_tab: 'document' },
+      },
+      has_analysis: true,
+    });
+
+    server.use(
+      http.get('*/rest/v1/v2_conversations', () => HttpResponse.json([conversationWithMetadata])),
+      http.get('*/rest/v1/v2_messages', () => HttpResponse.json([])),
+      http.get('*/rest/v1/v2_research_history', () => HttpResponse.json([]))
+    );
+
+    renderPage();
+
+    await waitFor(() => expect(promptBoxProps).not.toBeNull());
+    expect(promptBoxProps?.disabled).toBeFalsy();
+    expect(promptBoxProps?.disabledTooltip).toBeUndefined();
+  });
 });

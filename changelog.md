@@ -1,5 +1,22 @@
 # Changelog
 
+# Changelog
+
+## 2025-11-15 - Step 7 Chat Input & Webhook
+
+### Added
+- **Chat gating tests** in `__tests__/integration/chat-branch-state.test.tsx` cover document metadata fallbacks and tooltip scenarios to ensure source-only branches stay read-only across reloads.
+- **Prompt component coverage** in `__tests__/components/chat-input.test.tsx` (and the new `ChatInputField` assertions) locks the tooltip title + disabled submission behavior.
+- **Send flow integration tests** in `__tests__/integration/send-message.test.tsx` record `/api/chat` payloads, assert `message_id` forwarding, and verify that user messages persist locally when the webhook fails.
+
+### Changed
+- **Chat conversation flow** (`app/(app)/chat/[conversation_id]/page.tsx`) now resolves branch state from enrichment, persisted conversation metadata, and research history before rendering; message sending inserts the user row before calling `/api/chat`, forwards `message_id`/`document_id`, and stores assistant responses only when the webhook succeeds while surfacing a fallback toast otherwise.
+- **API route** (`app/api/chat/route.ts`) relays payloads to `https://n8n.automationdfy.com/webhook/mwplu/chat`, retries once on failure, and returns a structured `{ success, message }` response so the client can fall back gracefully.
+- **Shared tooling**: `components/ChatInputField.tsx` accepts `disabledTooltip`, MSW handlers capture `/api/chat` + new n8n webhook requests, and `vitest.config.ts` plus environment defaults point to the `mwplu/chat` endpoint.
+
+### Tests
+- `npx vitest run __tests__/integration/chat-branch-state.test.tsx __tests__/integration/send-message.test.tsx __tests__/components/chat-input.test.tsx`
+
 ## 2025-11-15 - Step 6 Loading & Artifacts
 
 ### Added

@@ -13,7 +13,7 @@ export default defineConfig({
     env: {
       NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
-      N8N_WEBHOOK_URL: 'https://n8n.automationdfy.com/webhook/api/chat',
+      N8N_WEBHOOK_URL: 'https://n8n.automationdfy.com/webhook/mwplu/chat',
     },
   },
   resolve: {

@@ -10,12 +10,14 @@ interface ChatInputFieldProps {
   onSend: (message: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  disabledTooltip?: string;
 }
 
 export function ChatInputField({
   onSend,
   placeholder = 'Quelle est la hauteur maximale autorisée ? Puis-je construire un garage ?',
   disabled = false,
+  disabledTooltip,
 }: ChatInputFieldProps) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -75,6 +77,7 @@ export function ChatInputField({
           onClick={handleSubmit}
           disabled={disabled || !input.trim()}
           size="icon"
+          title={disabled && disabledTooltip ? disabledTooltip : undefined}
           className={cn(
             "h-7 w-7 sm:h-9 sm:w-9 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90",
             "disabled:opacity-40 disabled:cursor-not-allowed",

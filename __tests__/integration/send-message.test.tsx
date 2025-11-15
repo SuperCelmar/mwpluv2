@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatConversationPage from '@/app/(app)/chat/[conversation_id]/page';
 import {
   mockRouter,
@@ -10,6 +12,11 @@ import {
   TEST_USER_ID,
 } from '@/__tests__/utils/test-helpers';
 import { server } from '@/__tests__/mocks/server';
+import {
+  getChatApiRequests,
+  recordChatApiRequest,
+  getV2MessagesStore,
+} from '@/__tests__/mocks/handlers';
 import { http, HttpResponse } from 'msw';
 
 // Mock next/navigation
@@ -18,9 +25,73 @@ vi.mock('next/navigation', () => ({
   useParams: vi.fn(),
 }));
 
+vi.mock('@/components/ui/ai-prompt-box', () => {
+  const React = require('react');
+  return {
+    PromptInputBox: ({ onSend, isLoading, disabled }: any) => {
+      const [value, setValue] = React.useState('');
+      return (
+        <div data-testid="prompt-input-box">
+          <textarea
+            placeholder="Posez votre question..."
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={disabled}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (!isLoading && !disabled && value.trim()) {
+                onSend(value.trim());
+                setValue('');
+              }
+            }}
+            disabled={isLoading || disabled || !value.trim()}
+          >
+            Envoyer
+          </button>
+        </div>
+      );
+    },
+  };
+});
+
+vi.mock('@/app/(app)/chat/[conversation_id]/useEnrichment', () => ({
+  useEnrichment: () => ({
+    status: 'complete',
+    retry: vi.fn(),
+    progress: {
+      enrichment: 'success',
+      zones: 'success',
+      municipality: 'success',
+      city: 'success',
+      zoning: 'success',
+      zone: 'success',
+      document: 'success',
+      map: 'success',
+    },
+    data: {
+      branchType: 'non_rnu_analysis',
+      documentData: {
+        documentId: 'doc-mock',
+        hasAnalysis: true,
+        htmlContent: '<p>Analyse</p>',
+      },
+      mapGeometry: null,
+    },
+  }),
+}));
+
 describe('Send Message Flow (v2)', () => {
   const user = userEvent.setup({ delay: null });
   let routerMocks: ReturnType<typeof mockRouter>;
+
+  beforeAll(() => {
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
 
   beforeEach(() => {
     routerMocks = mockRouter();
@@ -50,93 +121,72 @@ describe('Send Message Flow (v2)', () => {
     );
   });
 
-  it('should load chat page with conversation and display empty state', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+  function renderChatPage() {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatConversationPage params={{ conversation_id: 'conversation-123' }} />
+      </QueryClientProvider>
+    );
+  }
 
-    // Wait for loading to finish
+  it('relays payload to chat API with conversation metadata', async () => {
+    renderChatPage();
+
     await waitFor(() => {
       expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
     });
 
-    // Should show ready state
-    expect(screen.getByText(/Vos documents sont prêts/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Posez votre première question sur le PLU/)
-    ).toBeInTheDocument();
-  });
-
-  it('should send message and display response', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
-
-    // Wait for page to load
-    await waitFor(() => {
-      expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
-    });
-
-    // Type message
-    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
+    const textarea = (await screen.findByPlaceholderText(/Posez votre question/)) as HTMLTextAreaElement;
     await user.type(textarea, 'Quelles sont les règles de construction ?');
 
-    // Click send
-    const sendButton = screen.getByRole('button', { name: '' });
+    const sendButton = screen.getByRole('button', { name: /Envoyer/ });
     await user.click(sendButton);
 
-    // Wait for messages to appear
     await waitFor(() => {
-      expect(screen.getByText('Quelles sont les règles de construction ?')).toBeInTheDocument();
+      expect(getChatApiRequests().length).toBeGreaterThan(0);
     });
 
-    // Wait for AI response
-    await waitFor(() => {
-      const aiMessages = screen.getAllByText(/Merci pour votre question/);
-      expect(aiMessages.length).toBeGreaterThan(0);
-    });
+    const payload = getChatApiRequests()[0];
+    expect(payload.conversation_id).toBe('conversation-123');
+    expect(payload.user_id).toBe(TEST_USER_ID);
+    expect(payload.message).toContain('Quelles sont les règles de construction');
+    expect(payload.message_id).toBeTruthy();
+    expect(payload.context_metadata?.initial_address).toBe('15 Rue des Fustiers, 75001 Paris');
   });
 
-  it('should disable input during message sending', async () => {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
+  it('keeps user message when chat API responds with error', async () => {
+    server.use(
+      http.post('*/api/chat', async ({ request }) => {
+        const body = await request.json();
+        recordChatApiRequest(body);
+        return HttpResponse.json({ error: 'failure' }, { status: 500 });
+      })
+    );
+
+    renderChatPage();
 
     await waitFor(() => {
       expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers/) as HTMLTextAreaElement;
-    await user.type(textarea, 'Test question');
+    const textarea = (await screen.findByPlaceholderText(/Posez votre question/)) as HTMLTextAreaElement;
+    await user.type(textarea, 'Message qui échoue');
 
-    const sendButton = screen.getByRole('button', { name: '' });
+    const sendButton = screen.getByRole('button', { name: /Envoyer/ });
     await user.click(sendButton);
 
-    // Input should be disabled while sending
     await waitFor(() => {
-      expect(textarea).toBeDisabled();
-    });
-  });
-
-  it('should show error message if API fails', async () => {
-    // This would require mocking MSW to return an error response
-    // For now, we'll just ensure error handling exists
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-123' }} />);
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
+      expect(getChatApiRequests().length).toBe(1);
     });
 
-    const textarea = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
-    await user.type(textarea, 'Test');
-
-    const sendButton = screen.getByRole('button', { name: '' });
-    await user.click(sendButton);
-
-    // Wait for any response (success or error)
     await waitFor(() => {
-      const messages = screen.queryAllByRole('article');
-      expect(messages.length).toBeGreaterThan(0);
-    }, { timeout: 5000 });
-  });
-
-  it('should not send message if artifacts are not ready', async () => {
-    // This test would need to mock a conversation with artifacts_ready: false
-    // For now, we'll skip as it requires more complex setup
+      expect(
+        getV2MessagesStore().some(
+          (msg) => msg.conversation_id === 'conversation-123' && msg.message === 'Message qui échoue'
+        )
+      ).toBe(true);
+    });
   });
 });
 

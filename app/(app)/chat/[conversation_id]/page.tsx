@@ -141,6 +141,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   });
 
   const conversationContextMetadata = conversation?.context_metadata as any;
+  const conversationDocumentMetadata = (conversation?.document_metadata ?? null) as Record<string, any> | null;
   const enrichmentCache = conversationContextMetadata?.enrichment_cache;
   const cityNameFromContext = conversationContextMetadata?.city || enrichmentCache?.city_name || '';
   const inseeCodeFromContext = conversationContextMetadata?.insee_code || enrichmentCache?.insee_code || '';
@@ -210,8 +211,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   // Use enrichment hook for background enrichment
   const enrichment = useEnrichment(params.conversation_id, conversation ?? null);
-
-  const conversationDocumentMetadata = (conversation?.document_metadata as any) || null;
 
   // Use artifact sync hook for managing artifacts
   const artifactSync = useArtifactSync(params.conversation_id, {
@@ -830,47 +829,51 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [conversation?.enrichment_status, researchContext, conversationContextMetadata, updateArtifactState]);
 
+  const enrichmentBranch = (enrichment.data.branchType as ConversationBranch | undefined) || null;
+  const metadataBranch =
+    conversationDocumentMetadata &&
+    conversationDocumentMetadata.branch_type &&
+    conversationDocumentMetadata.branch_type !== 'pending'
+      ? (conversationDocumentMetadata.branch_type as ConversationBranch)
+      : null;
+  const persistedBranch =
+    conversation &&
+    conversation.branch_type &&
+    conversation.branch_type !== 'pending'
+      ? (conversation.branch_type as ConversationBranch)
+      : null;
+  const researchBranch =
+    researchContext &&
+    researchContext.branch_type &&
+    researchContext.branch_type !== 'pending'
+      ? (researchContext.branch_type as ConversationBranch)
+      : null;
+  const hasStableFlags =
+    !!(
+      (conversation && (conversation.has_analysis || conversation.is_rnu)) ||
+      (researchContext && (researchContext.has_analysis || researchContext.is_rnu))
+    );
+  const fallbackBranch: ConversationBranch | null = hasStableFlags
+    ? determineConversationBranch({
+        isRnu: conversation?.is_rnu ?? researchContext?.is_rnu ?? false,
+        hasAnalysis: conversation?.has_analysis ?? researchContext?.has_analysis ?? false,
+      })
+    : null;
+  const resolvedBranch: ConversationBranch | null =
+    enrichmentBranch || metadataBranch || persistedBranch || researchBranch || fallbackBranch;
+
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
       if (!userId || !conversation) throw new Error('Missing user or conversation');
 
-      console.log('[CHAT_MESSAGE] Constructing webhook payload');
-      const webhookPayload: any = {
-        new_conversation: isFirstMessage,
-        message: content,
-        user_id: userId,
-        conversation_id: params.conversation_id,
-        context_metadata: conversationContextMetadata,
-      };
+      const preferredDocumentId =
+        conversation.primary_document_id ||
+        conversationDocumentMetadata?.document_id ||
+        enrichment.data.documentData?.documentId ||
+        getFirstDocumentId(researchContext?.documents_found);
 
-      if (researchContext?.geo_lon && researchContext?.geo_lat) {
-        webhookPayload.gps_coordinates = [researchContext.geo_lon, researchContext.geo_lat];
-      }
-
-      if (researchContext?.documents_found && researchContext.documents_found.length > 0) {
-        webhookPayload.document_ids = researchContext.documents_found;
-      }
-
-      if (researchContext?.geocoded_address) {
-        webhookPayload.address = researchContext.geocoded_address;
-      }
-
-      console.log('[CHAT_MESSAGE] Calling chat API');
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(webhookPayload),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get response');
-      }
-
-      const data = await response.json();
-
-      // Insert messages into database
-      const { data: insertedMessages, error: insertError } = await supabase
+      const { data: userInsert, error: userInsertError } = await supabase
         .from('v2_messages')
         .insert([
           {
@@ -880,56 +883,136 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             message: content,
             conversation_turn: messages.length + 1,
           },
-          {
-            conversation_id: params.conversation_id,
-            user_id: userId,
-            role: 'assistant',
-            message: data.message,
-            conversation_turn: messages.length + 2,
-            referenced_documents: researchContext?.documents_found || null,
-          },
         ])
         .select();
 
-      if (insertError) throw insertError;
+      if (userInsertError) throw userInsertError;
 
-      // Update conversation
-      await supabase
-        .from('v2_conversations')
-        .update({
-          last_message_at: new Date().toISOString(),
-          message_count: messages.length + 2,
-        })
-        .eq('id', params.conversation_id);
+      const userMessage = userInsert?.[0] ?? null;
+      let assistantMessage: V2Message | null = null;
+      let webhookError: string | null = null;
+      let insertedCount = userMessage ? 1 : 0;
 
-      // Log analytics events
-      if (insertedMessages && insertedMessages.length >= 2) {
-        const [userMsg, assistantMsg] = insertedMessages;
-        const documentId = getFirstDocumentId(researchContext?.documents_found);
+      if (userMessage) {
+        console.log('[CHAT_MESSAGE] Constructing webhook payload');
+        const webhookPayload: Record<string, any> = {
+          new_conversation: isFirstMessage,
+          message: content,
+          message_id: userMessage.id,
+          user_id: userId,
+          conversation_id: params.conversation_id,
+          document_id: preferredDocumentId,
+          context_metadata: conversationContextMetadata,
+          branch_type: resolvedBranch,
+        };
+
+        if (researchContext?.geo_lon && researchContext?.geo_lat) {
+          webhookPayload.gps_coordinates = [researchContext.geo_lon, researchContext.geo_lat];
+        }
+
+        if (researchContext?.documents_found && researchContext.documents_found.length > 0) {
+          webhookPayload.document_ids = researchContext.documents_found;
+        }
+
+        if (researchContext?.geocoded_address) {
+          webhookPayload.address = researchContext.geocoded_address;
+        }
+
+        try {
+          console.log('[CHAT_MESSAGE] Calling chat API');
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          });
+
+          const data = await response.json();
+          const webhookSucceeded =
+            response.ok &&
+            data?.success !== false &&
+            typeof data?.message === 'string' &&
+            data.message.length > 0;
+
+          if (webhookSucceeded) {
+            const { data: assistantInsert, error: assistantInsertError } = await supabase
+              .from('v2_messages')
+              .insert([
+                {
+                  conversation_id: params.conversation_id,
+                  user_id: userId,
+                  role: 'assistant',
+                  message: data.message,
+                  conversation_turn: messages.length + 2,
+                  referenced_documents: researchContext?.documents_found || null,
+                },
+              ])
+              .select();
+
+            if (assistantInsertError) throw assistantInsertError;
+
+            assistantMessage = assistantInsert?.[0] ?? null;
+            if (assistantMessage) {
+              insertedCount += 1;
+            }
+          } else {
+            webhookError =
+              data?.message ||
+              "L'assistant est temporairement indisponible. Votre question a bien été enregistrée.";
+          }
+        } catch (error) {
+          console.error('[CHAT_MESSAGE] Error sending webhook:', error);
+          webhookError =
+            "L'assistant est temporairement indisponible. Votre question a bien été enregistrée.";
+        }
+      }
+
+      if (insertedCount > 0) {
+        await supabase
+          .from('v2_conversations')
+          .update({
+            last_message_at: new Date().toISOString(),
+            message_count: (conversation.message_count ?? 0) + insertedCount,
+          })
+          .eq('id', params.conversation_id);
+      }
+
+      if (userMessage) {
+          const analyticsDocumentId =
+            preferredDocumentId || getFirstDocumentId(researchContext?.documents_found);
 
         await logChatEvent({
           conversation_id: params.conversation_id,
-          message_id: userMsg.id,
+          message_id: userMessage.id,
           user_id: userId,
-          document_id: documentId,
+          document_id: analyticsDocumentId,
           user_query_length: content.length,
         });
 
-        await logChatEvent({
-          conversation_id: params.conversation_id,
-          message_id: assistantMsg.id,
-          user_id: userId,
-          document_id: documentId,
-          ai_response_length: data.message.length,
-        });
+        if (assistantMessage) {
+          await logChatEvent({
+            conversation_id: params.conversation_id,
+            message_id: assistantMessage.id,
+            user_id: userId,
+            document_id: analyticsDocumentId,
+            ai_response_length: assistantMessage.message?.length || 0,
+          });
+        }
       }
 
-      return { insertedMessages, data };
+      return { userMessage, assistantMessage, webhookError };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       // Invalidate messages query to refresh
       queryClient.invalidateQueries({ queryKey: ['messages', params.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['conversation', params.conversation_id] });
+
+      if (result?.webhookError) {
+        toast({
+          title: 'Assistant indisponible',
+          description: result.webhookError,
+          variant: 'destructive',
+        });
+      }
     },
   });
 
@@ -973,36 +1056,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   const conversationStarted = !!conversation;
   const showBreadcrumb = !!conversation?.project_id;
-
-  const enrichmentBranch = (enrichment.data.branchType as ConversationBranch | undefined) || null;
-  const persistedBranch =
-    conversation &&
-    conversation.branch_type &&
-    conversation.branch_type !== 'pending'
-      ? (conversation.branch_type as ConversationBranch)
-      : null;
-  const researchBranch =
-    researchContext &&
-    researchContext.branch_type &&
-    researchContext.branch_type !== 'pending'
-      ? (researchContext.branch_type as ConversationBranch)
-      : null;
-
-  const hasStableFlags =
-    !!(
-      (conversation && (conversation.has_analysis || conversation.is_rnu)) ||
-      (researchContext && (researchContext.has_analysis || researchContext.is_rnu))
-    );
-
-  const fallbackBranch: ConversationBranch | null = hasStableFlags
-    ? determineConversationBranch({
-        isRnu: conversation?.is_rnu ?? researchContext?.is_rnu ?? false,
-        hasAnalysis: conversation?.has_analysis ?? researchContext?.has_analysis ?? false,
-      })
-    : null;
-
-  const resolvedBranch: ConversationBranch | null =
-    enrichmentBranch || persistedBranch || researchBranch || fallbackBranch;
 
   const chatInputDisabled = resolvedBranch === 'non_rnu_source';
   const chatDisabledTooltip = chatInputDisabled
@@ -1207,8 +1260,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                 isLoading={sendingMessage}
                 placeholder="Posez votre question..."
                 conversationStarted={conversationStarted}
-          disabled={chatInputDisabled}
-          disabledTooltip={chatDisabledTooltip}
+                disabled={chatInputDisabled}
+                disabledTooltip={chatDisabledTooltip}
               />
             </div>
           </div>
