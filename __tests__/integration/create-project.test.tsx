@@ -1,36 +1,48 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import Home from '@/app/page';
-import { mockRouter } from '@/__tests__/utils/test-helpers';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Home from '@/app/(app)/page';
+import * as supabaseModule from '@/lib/supabase';
 
-// Mock next/navigation
+const routerMocks = {
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  prefetch: vi.fn(),
+};
+
 vi.mock('next/navigation', () => ({
-  useRouter: vi.fn(),
+  useRouter: () => routerMocks,
 }));
 
 // Increase timeout for tests that make real Carto API calls
 describe('Create Project Flow (v2)', () => {
   const user = userEvent.setup({ delay: null }); // Faster typing for tests
-  let routerMocks: ReturnType<typeof mockRouter>;
-
   beforeEach(() => {
-    routerMocks = mockRouter();
+    Object.values(routerMocks).forEach((fn) => fn.mockReset());
   });
 
+  const renderHome = () => {
+    const queryClient = new QueryClient();
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <Home />
+      </QueryClientProvider>
+    );
+  };
+
   it('should render initial state with welcome message and address input', async () => {
-    render(<Home />);
+    renderHome();
 
     // Wait for auth check to complete
     await waitFor(() => {
       expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText('Bienvenue sur MWPLU')).toBeInTheDocument();
-    expect(
-      screen.getByText('Entrez l\'adresse de votre projet pour commencer l\'analyse du PLU')
-    ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i)).toBeInTheDocument();
   });
 
   it('should search for address and display suggestions', async () => {
@@ -39,14 +51,14 @@ describe('Create Project Flow (v2)', () => {
     // Processing: Debounced API call to French Address API (mocked via MSW)
     // Output: Suggestions displayed in dropdown
 
-    render(<Home />);
+    renderHome();
 
     // Wait for auth check
     await waitFor(() => {
       expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
 
     // User interaction: Type address query
     await user.type(input, '15 rue');
@@ -67,13 +79,13 @@ describe('Create Project Flow (v2)', () => {
   });
 
   it('should enable submit button when address is selected', async () => {
-    render(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
     await user.type(input, '15 rue');
 
     // Wait for suggestions
@@ -85,9 +97,10 @@ describe('Create Project Flow (v2)', () => {
     const suggestion = screen.getByText(/15 Rue des Fustiers/);
     await user.click(suggestion);
 
-    // Button should now be enabled
-    const submitButton = screen.getByRole('button', { name: /Commencer l'analyse/ });
-    expect(submitButton).not.toBeDisabled();
+    await user.type(input, '{Enter}');
+    await waitFor(() => {
+      expect(routerMocks.push).toHaveBeenCalled();
+    });
   });
 
   it('should create v2 project, conversation and navigate to chat page', async () => {
@@ -102,13 +115,13 @@ describe('Create Project Flow (v2)', () => {
     //   6. Link documents via v2_conversation_documents
     // Output: Navigation to /chat/[conversation_id]
 
-    render(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
     await user.type(input, '15 rue');
 
     // Wait for suggestions and select
@@ -120,8 +133,7 @@ describe('Create Project Flow (v2)', () => {
     await user.click(suggestion);
 
     // Click submit
-    const submitButton = screen.getByRole('button', { name: /Commencer l'analyse/ });
-    await user.click(submitButton);
+    await user.type(input, '{Enter}');
 
     // Wait for navigation (this will take longer due to Carto API calls)
     await waitFor(
@@ -144,13 +156,13 @@ describe('Create Project Flow (v2)', () => {
   });
 
   it('should create conversation with default title from address', async () => {
-    render(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(/Ex: 15 rue des Fustiers, Paris 75001/);
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
     await user.type(input, '15 rue');
 
     await waitFor(() => {
@@ -160,8 +172,7 @@ describe('Create Project Flow (v2)', () => {
     const suggestion = screen.getByText(/15 Rue des Fustiers/);
     await user.click(suggestion);
 
-    const submitButton = screen.getByRole('button', { name: /Commencer l'analyse/ });
-    await user.click(submitButton);
+    await user.type(input, '{Enter}');
 
     // Wait for conversation creation
     await waitFor(
@@ -185,6 +196,102 @@ describe('Create Project Flow (v2)', () => {
     // For now, verify navigation occurred (output verification)
     const navigationCall = routerMocks.push.mock.calls[0]?.[0];
     expect(navigationCall).toMatch(/^\/chat\/conversation-/);
+  });
+
+  it('should create research history entry when address is submitted', async () => {
+    renderHome();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
+    await user.type(input, '15 rue');
+
+    await waitFor(() => {
+      expect(screen.getByText(/15 Rue des Fustiers/)).toBeInTheDocument();
+    });
+
+    const suggestion = screen.getByText(/15 Rue des Fustiers/);
+    await user.click(suggestion);
+
+    await user.type(input, '{Enter}');
+
+    await waitFor(() => {
+      expect(routerMocks.push).toHaveBeenCalled();
+    }, { timeout: 10000 });
+
+    const response = await fetch('https://test.supabase.co/rest/v1/v2_research_history?user_id=eq.test-user-id');
+    const researchEntries = await response.json();
+
+    expect(researchEntries.length).toBeGreaterThan(0);
+    const latestEntry = researchEntries[0];
+    expect(latestEntry.address_input).toContain('15 Rue des Fustiers');
+    expect(latestEntry.conversation_id).toBeDefined();
+  });
+
+  it('should redirect to existing conversation when duplicate detected', async () => {
+    const duplicateSpy = vi
+      .spyOn(supabaseModule, 'checkDuplicateByCoordinates')
+      .mockResolvedValue({
+        exists: true,
+        conversationId: 'conversation-duplicate',
+      });
+
+    renderHome();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
+    await user.type(input, '15 rue');
+
+    await waitFor(() => {
+      expect(screen.getByText(/15 Rue des Fustiers/)).toBeInTheDocument();
+    });
+
+    const suggestion = screen.getByText(/15 Rue des Fustiers/);
+    await user.click(suggestion);
+
+    await user.type(input, '{Enter}');
+
+    await waitFor(() => {
+      expect(routerMocks.push).toHaveBeenCalledWith('/chat/conversation-duplicate');
+    });
+
+    duplicateSpy.mockRestore();
+  });
+
+  it('shows inline duplicate hint when duplicate detected pre-submit', async () => {
+    const duplicateSpy = vi
+      .spyOn(supabaseModule, 'checkDuplicateByCoordinates')
+      .mockResolvedValue({
+        exists: true,
+        conversationId: 'conversation-duplicate',
+      });
+
+    renderHome();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
+    await user.type(input, '15 rue');
+
+    await waitFor(() => {
+      expect(screen.getByText(/15 Rue des Fustiers/)).toBeInTheDocument();
+    });
+
+    const suggestion = screen.getByText(/15 Rue des Fustiers/);
+    await user.click(suggestion);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('duplicate-hint')).toBeInTheDocument();
+    });
+
+    duplicateSpy.mockRestore();
   });
 });
 

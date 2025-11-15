@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ChatConversationPage from '@/app/chat/[conversation_id]/page';
+import ChatConversationPage from '@/app/(app)/chat/[conversation_id]/page';
 import {
   mockRouter,
   mockParams,

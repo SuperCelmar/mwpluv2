@@ -53,3 +53,61 @@ export async function createLightweightConversation(
   return { conversationId: conversation.id };
 }
 
+interface CreateResearchHistoryParams {
+  userId: string;
+  conversationId: string;
+  addressInput: string;
+  coordinates: { lon: number; lat: number };
+  projectId?: string | null;
+}
+
+export async function createInitialResearchHistoryEntry({
+  userId,
+  conversationId,
+  addressInput,
+  coordinates,
+  projectId = null,
+}: CreateResearchHistoryParams): Promise<void> {
+  console.log('[RESEARCH_HISTORY] Creating initial research history entry:', {
+    userId,
+    conversationId,
+    projectId,
+    addressInput,
+  });
+
+  try {
+    const { data: existingEntry, error: lookupError } = await supabase
+      .from('v2_research_history')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.warn('[RESEARCH_HISTORY] Lookup error (ignored):', lookupError);
+    }
+
+    if (existingEntry) {
+      console.log('[RESEARCH_HISTORY] Entry already exists, skipping creation');
+      return;
+    }
+
+    const { error: insertError } = await supabase.from('v2_research_history').insert({
+      user_id: userId,
+      conversation_id: conversationId,
+      project_id: projectId,
+      address_input: addressInput,
+      geo_lon: coordinates.lon,
+      geo_lat: coordinates.lat,
+      success: true,
+    });
+
+    if (insertError) {
+      console.error('[RESEARCH_HISTORY] Failed to insert entry:', insertError);
+    } else {
+      console.log('[RESEARCH_HISTORY] Initial entry created successfully');
+    }
+  } catch (error) {
+    console.error('[RESEARCH_HISTORY] Unexpected error creating entry:', error);
+  }
+}
+

@@ -298,7 +298,7 @@ Votre demande porte-t-elle sur une construction neuve, une extension, ou une ré
       updated_at: new Date().toISOString(),
     };
     mockV2Projects.push(newProject);
-    return HttpResponse.json([newProject]);
+    return HttpResponse.json(newProject);
   }),
 
   http.get('*/rest/v1/v2_projects', ({ request }) => {
@@ -331,7 +331,10 @@ Votre demande porte-t-elle sur une construction neuve, une extension, ou une ré
       updated_at: new Date().toISOString(),
     };
     mockV2Conversations.push(newConversation);
-    return HttpResponse.json([newConversation]);
+    return HttpResponse.json(newConversation);
+  }),
+  http.post('*/rest/v1/rpc/check_duplicate_by_coordinates', async () => {
+    return HttpResponse.json([]);
   }),
 
   http.get('*/rest/v1/v2_conversations', ({ request }) => {

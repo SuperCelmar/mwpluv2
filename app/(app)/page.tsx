@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { AddressSuggestion, searchAddress } from '@/lib/address-api';
-import { createLightweightConversation } from '@/lib/supabase/queries';
+import { createLightweightConversation, createInitialResearchHistoryEntry } from '@/lib/supabase/queries';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from '@/hooks/use-toast';
 
@@ -113,6 +113,14 @@ export default function Home() {
       );
 
       console.log('[LIGHTWEIGHT_CONV] Conversation created, id:', conversationId);
+
+      await createInitialResearchHistoryEntry({
+        userId,
+        conversationId,
+        addressInput: addressLabel,
+        coordinates: { lon: lon!, lat: lat! },
+        projectId: null,
+      });
 
       // Step 3: Navigate immediately (enrichment happens in background on chat page)
       console.log('[NAVIGATION] Navigating immediately to chat page:', `/chat/${conversationId}`);

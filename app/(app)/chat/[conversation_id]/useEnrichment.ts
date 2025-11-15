@@ -86,6 +86,7 @@ export function useEnrichment(
             zoningId: result.zoningId,
             documentData: result.documentData,
             mapGeometry: result.mapGeometry,
+            branchType: result.branchType,
             errors: result.errors,
             operationTimes: result.operationTimes,
           });
@@ -197,6 +198,7 @@ export function useEnrichment(
         zoningId: result.zoningId,
         documentData: result.documentData,
         mapGeometry: result.mapGeometry,
+        branchType: result.branchType,
         errors: result.errors,
         operationTimes: result.operationTimes,
       });

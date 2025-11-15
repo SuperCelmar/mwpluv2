@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import type { UseEnrichmentReturn } from '@/app/(app)/chat/[conversation_id]/useEnrichment';
+import type { ConversationBranch } from '@/types/enrichment';
 
 interface LoadingAssistantMessageProps {
   enrichment: UseEnrichmentReturn;
@@ -15,12 +16,6 @@ interface LoadingAssistantMessageProps {
 }
 
 type LoadingStage = 'step1' | 'step2' | 'step3';
-
-const LOADING_MESSAGES: Record<LoadingStage, string> = {
-  step1: 'Vérification de la zone concernée...',
-  step2: 'Récupération des documents sources...',
-  step3: 'Récupération de l\'analyse correspondante...',
-};
 
 export function LoadingAssistantMessage({ 
   enrichment, 
@@ -32,6 +27,15 @@ export function LoadingAssistantMessage({
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('step1');
   const [mounted, setMounted] = useState(false);
   const [messageOpacity, setMessageOpacity] = useState(1);
+  const branchType: ConversationBranch =
+    (enrichment.data?.branchType as ConversationBranch) ||
+    (enrichment.data?.documentData?.hasAnalysis ? 'non_rnu_analysis' : 'non_rnu_source');
+  const shouldShowAnalysisStep = branchType === 'non_rnu_analysis';
+  const step2Message =
+    branchType === 'rnu'
+      ? 'Récupération du RNU...'
+      : 'Vérification de la présence d\'analyse...';
+  const step3Message = 'Récupération de l\'analyse correspondante...';
   
   // Track timestamps for timing control
   const mapPolygonRenderedTimestamp = useRef<number | null>(null);
@@ -102,8 +106,8 @@ export function LoadingAssistantMessage({
       // After 1 second, check if document content is ready
       step2MinDelayRef.current = setTimeout(() => {
         console.log('[LOADING_MESSAGE] Step 2: 1s delay complete');
-        // If document has content, transition to Step 3
-        if (data.documentData?.htmlContent) {
+        // If document has content and analysis is expected, transition to Step 3
+        if (shouldShowAnalysisStep && data.documentData?.htmlContent) {
           console.log('[LOADING_MESSAGE] Step 2: Document content ready, transitioning to Step 3');
           // Fade out message
           setMessageOpacity(0);
@@ -128,7 +132,12 @@ export function LoadingAssistantMessage({
     });
     
     // Check if we're in Step 3 and document is rendered
-    if (loadingStage === 'step3' && isDocumentRendered && data.documentData?.htmlContent) {
+    if (
+      shouldShowAnalysisStep &&
+      loadingStage === 'step3' &&
+      isDocumentRendered &&
+      data.documentData?.htmlContent
+    ) {
       console.log('[LOADING_MESSAGE] Step 3: Document rendered, starting 1s delay before fade out');
       
       // After 1 second, start fade out
@@ -156,7 +165,12 @@ export function LoadingAssistantMessage({
     };
   }, []);
 
-  const currentMessage = LOADING_MESSAGES[loadingStage];
+  const currentMessage =
+    loadingStage === 'step1'
+      ? 'Vérification de la zone concernée...'
+      : loadingStage === 'step2'
+        ? step2Message
+        : step3Message;
 
   return (
     <div

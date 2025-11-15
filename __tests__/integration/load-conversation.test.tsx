@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import ChatConversationPage from '@/app/chat/[conversation_id]/page';
+import ChatConversationPage from '@/app/(app)/chat/[conversation_id]/page';
 import { mockRouter, mockParams, createMockV2Conversation } from '@/__tests__/utils/test-helpers';
 import { server } from '@/__tests__/mocks/server';
 import { http, HttpResponse } from 'msw';

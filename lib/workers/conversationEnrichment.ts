@@ -3,6 +3,7 @@ import { fetchZoneUrba, fetchMunicipality, fetchDocument } from '../carto-api';
 import { getOrCreateCity, getOrCreateZoning, getOrCreateZone } from '../geo-enrichment';
 import { setCachedConversationData } from '../utils/conversationCache';
 import { logChatEvent } from '../analytics';
+import { ConversationBranch } from '@/types/enrichment';
 
 /**
  * Operation names for enrichment tracking
@@ -29,6 +30,7 @@ export interface EnrichmentResult {
     hasAnalysis: boolean;
   } | null;
   mapGeometry: any | null;
+  branchType: ConversationBranch | null;
   errors: Record<EnrichmentOperation, Error | null>;
   operationTimes: Record<EnrichmentOperation, number | null>;
 }
@@ -53,6 +55,7 @@ export async function enrichConversation(
     zoningId: null,
     documentData: null,
     mapGeometry: null,
+    branchType: null,
     errors: {
       zones: null,
       municipality: null,
@@ -378,6 +381,7 @@ export async function enrichConversation(
                 documentId: document.id,
                 hasAnalysis: true,
               };
+              result.branchType = isRnu ? 'rnu' : 'non_rnu_analysis';
               result.operationTimes.document = Date.now() - opStart;
               return result.documentData;
             }
@@ -411,9 +415,14 @@ export async function enrichConversation(
                     documentId: newDocument.id,
                     hasAnalysis: false,
                   };
+                  result.branchType = isRnu ? 'rnu' : 'non_rnu_source';
                 }
               }
             }
+          }
+
+          if (!result.branchType) {
+            result.branchType = isRnu ? 'rnu' : 'non_rnu_source';
           }
 
           result.operationTimes.document = Date.now() - opStart;
@@ -488,6 +497,17 @@ export async function enrichConversation(
         .eq('id', researchId);
     }
 
+    // Ensure branchType is set for downstream consumers
+    if (!result.branchType) {
+      if (isRnu) {
+        result.branchType = 'rnu';
+      } else if (result.documentData?.hasAnalysis) {
+        result.branchType = 'non_rnu_analysis';
+      } else {
+        result.branchType = 'non_rnu_source';
+      }
+    }
+
     // Update conversation context_metadata with enrichment data
     const updatedMetadata = {
       ...contextMetadata,
@@ -496,6 +516,9 @@ export async function enrichConversation(
         zone_id: result.zoneId,
         zoning_id: result.zoningId,
         enriched_at: new Date().toISOString(),
+        branch_type: result.branchType,
+        has_analysis: result.documentData?.hasAnalysis || false,
+        is_rnu: isRnu,
       },
     };
 
@@ -517,6 +540,7 @@ export async function enrichConversation(
           city_name: cityName,
           insee_code: inseeCode,
           has_analysis: result.documentData?.hasAnalysis || false,
+          branch_type: result.branchType,
           document_summary: result.documentData?.htmlContent ? 'Analysis available' : undefined,
           cache_version: 1,
         });
