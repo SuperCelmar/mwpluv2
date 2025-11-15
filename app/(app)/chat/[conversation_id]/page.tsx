@@ -3,7 +3,9 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase, V2Conversation, V2Message, V2ResearchHistory, V2Project } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+import type { V2Conversation, V2Message, V2ResearchHistory, V2Project, Document } from '@/lib/supabase';
 import { logChatEvent, getFirstDocumentId } from '@/lib/analytics';
 import { useEnrichment } from './useEnrichment';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
@@ -24,6 +26,12 @@ import { toast } from '@/hooks/use-toast';
 import type { ConversationBranch } from '@/types/enrichment';
 import { determineConversationBranch } from '@/lib/utils/enrichmentBranches';
 
+type ZoneRecord = {
+  description: string | null;
+  name: string | null;
+  geometry: any | null;
+};
+
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -40,7 +48,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [loadingMessageFadingOut, setLoadingMessageFadingOut] = useState(false);
 
   // Fetch user authentication using React Query
-  const { data: user } = useQuery({
+  const { data: user } = useQuery<User | null>({
     queryKey: ['user'],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -56,7 +64,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const userId = user?.id || null;
 
   // Fetch conversation using React Query
-  const { data: conversation, isLoading: conversationLoading } = useQuery({
+  const {
+    data: conversation,
+    isLoading: conversationLoading,
+    error: conversationError,
+  } = useQuery<V2Conversation | null>({
     queryKey: ['conversation', params.conversation_id],
     queryFn: async () => {
       if (!userId) return null;
@@ -76,13 +88,16 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       return conv;
     },
     enabled: !!userId,
-    onError: () => {
-      router.push('/');
-    },
   });
 
+  useEffect(() => {
+    if (conversationError) {
+      router.push('/');
+    }
+  }, [conversationError, router]);
+
   // Fetch project using React Query (conditional)
-  const { data: project } = useQuery({
+  const { data: project } = useQuery<V2Project | null>({
     queryKey: ['project', conversation?.project_id],
     queryFn: async () => {
       if (!userId || !conversation?.project_id) return null;
@@ -103,7 +118,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   });
 
   // Fetch messages using React Query
-  const { data: messagesData = [] } = useQuery({
+  const { data: messagesData = [] } = useQuery<V2Message[]>({
     queryKey: ['messages', params.conversation_id],
     queryFn: async () => {
       if (!userId) return [];
@@ -119,6 +134,11 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     },
     enabled: !!userId,
   });
+
+  const conversationContextMetadata = conversation?.context_metadata as any;
+  const enrichmentCache = conversationContextMetadata?.enrichment_cache;
+  const cityNameFromContext = conversationContextMetadata?.city || enrichmentCache?.city_name || '';
+  const inseeCodeFromContext = conversationContextMetadata?.insee_code || enrichmentCache?.insee_code || '';
 
   // Compute messages with initial address message if needed
   const messages = useMemo(() => {
@@ -163,7 +183,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const isFirstMessage = messages.length === 0 || (messages.length === 1 && messages[0].message_type === 'address_search');
 
   // Fetch research history using React Query
-  const { data: researchContext } = useQuery({
+  const { data: researchContext } = useQuery<V2ResearchHistory | null>({
     queryKey: ['research-history', params.conversation_id],
     queryFn: async () => {
       if (!userId) return null;
@@ -209,9 +229,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [messages]);
 
-  const conversationContextMetadata = conversation?.context_metadata as any;
-  const cityNameFromContext = conversationContextMetadata?.city || '';
-  const inseeCodeFromContext = conversationContextMetadata?.insee_code || '';
   const persistedEnrichment = conversationContextMetadata?.enrichment;
   const resolvedZoneId =
     enrichment.data.zoneId || persistedEnrichment?.zone_id || null;
@@ -223,7 +240,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     null;
 
   // Fetch zone name/geometry using React Query when available
-  const { data: zoneData } = useQuery({
+  const { data: zoneData } = useQuery<ZoneRecord | null>({
     queryKey: ['zone-name', resolvedZoneId],
     queryFn: async () => {
       if (!resolvedZoneId) return null;
@@ -245,7 +262,24 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     },
   });
 
-  const { data: persistedDocument } = useQuery({
+  useEffect(() => {
+    if (enrichmentCache?.zone_name && !zoneName) {
+      setZoneName(enrichmentCache.zone_name);
+    }
+  }, [enrichmentCache?.zone_name, zoneName]);
+
+  const resolvedMapGeometry = useMemo(() => {
+    if (enrichment.data.mapGeometry) {
+      return enrichment.data.mapGeometry;
+    }
+    if (enrichmentCache?.zone_geometry) {
+      return enrichmentCache.zone_geometry;
+    }
+    const zoneGeometry = (zoneData as any)?.geometry;
+    return zoneGeometry || null;
+  }, [enrichment.data.mapGeometry, enrichmentCache?.zone_geometry, zoneData]);
+
+  const { data: persistedDocument } = useQuery<Document | null>({
     queryKey: ['document-artifact', resolvedDocumentId],
     queryFn: async () => {
       if (!resolvedDocumentId) return null;
@@ -263,7 +297,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   useEffect(() => {
     const lon = conversationContextMetadata?.geocoded?.lon;
     const lat = conversationContextMetadata?.geocoded?.lat;
-    const mapGeometry = enrichment.data.mapGeometry || (zoneData as any)?.geometry || null;
+    const mapGeometry = resolvedMapGeometry;
 
     // Initialize map artifact when coordinates are available
     // Works for both active enrichment and completed conversations
@@ -273,9 +307,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       // Initialize map with just coordinates if we don't have geometry yet
     const mapData: MapArtifactData = {
       center: { lat, lon },
-      geometry: mapGeometry || undefined, // Geometry is optional now
-      cityName: cityNameFromContext,
-      zoneName: zoneName || undefined,
+      geometry: mapGeometry || undefined,
+      cityName: cityNameFromContext || enrichmentCache?.city_name || '',
+      zoneName: zoneName || enrichmentCache?.zone_name || undefined,
+      zoneLibelle: conversationDocumentMetadata?.zone_name || undefined,
     };
 
       // If map doesn't exist yet, initialize it with coordinates
@@ -311,7 +346,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       }
     }
   }, [
-    enrichment.data.mapGeometry,
+    resolvedMapGeometry,
     zoneData,
     enrichment.status,
     conversation,
@@ -320,11 +355,35 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     zoneName,
     artifacts.map,
     updateArtifactState,
+    enrichmentCache?.city_name,
+    enrichmentCache?.zone_name,
+    conversationDocumentMetadata,
   ]);
 
   const resolvedDocumentData = useMemo(() => {
+    const metadata = conversationDocumentMetadata || {};
+    const baseTitle =
+      metadata.document_title ||
+      (conversation?.is_rnu ? 'Règlement RNU' : 'Document PLU');
+    const baseType: 'PLU' | 'POS' | 'RNU' =
+      metadata.branch_type === 'rnu' || conversation?.is_rnu ? 'RNU' : 'PLU';
+    const baseZoneLabel = metadata.zone_name || metadata.zone_code || undefined;
+    const baseCityName = metadata.city_name || cityNameFromContext;
+    const persistedSourceUrl =
+      metadata.source_plu_url || persistedDocument?.source_plu_url || null;
+
     if (enrichment.data.documentData?.documentId) {
-      return enrichment.data.documentData;
+      const docData = enrichment.data.documentData;
+      return {
+        documentId: docData.documentId,
+        htmlContent: docData.htmlContent || null,
+        hasAnalysis: docData.hasAnalysis,
+        sourceUrl: docData.sourceUrl || persistedSourceUrl,
+        title: baseTitle,
+        documentType: baseType,
+        zoneLabel: baseZoneLabel,
+        cityName: baseCityName,
+      };
     }
 
     if (!resolvedDocumentId) {
@@ -335,18 +394,20 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       documentId: resolvedDocumentId,
       htmlContent: persistedDocument?.html_content || null,
       hasAnalysis: conversation?.has_analysis ?? false,
-      sourceUrl:
-        enrichment.data.documentData?.sourceUrl ||
-        conversationDocumentMetadata?.source_plu_url ||
-        persistedDocument?.source_plu_url ||
-        null,
+      sourceUrl: persistedSourceUrl,
+      title: baseTitle,
+      documentType: baseType,
+      zoneLabel: baseZoneLabel,
+      cityName: baseCityName,
     };
   }, [
     enrichment.data.documentData,
     resolvedDocumentId,
     persistedDocument,
     conversation?.has_analysis,
+    conversation?.is_rnu,
     conversationDocumentMetadata,
+    cityNameFromContext,
   ]);
 
   // useEffect: state synchronization (document artifact sync)
@@ -355,21 +416,24 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       const docData = resolvedDocumentData;
       const documentData: DocumentArtifactData = {
         documentId: docData.documentId,
-        title: 'Document PLU',
-        type: 'PLU',
+        title: docData.title || (conversation?.is_rnu ? 'Règlement RNU' : 'Document PLU'),
+        type: docData.documentType || (conversation?.is_rnu ? 'RNU' : 'PLU'),
         htmlContent: docData.htmlContent || undefined,
         hasAnalysis: docData.hasAnalysis,
-          cityName: cityNameFromContext,
-          inseeCode: inseeCodeFromContext,
+        cityName: docData.cityName || cityNameFromContext,
+        inseeCode: inseeCodeFromContext,
         sourceUrl: docData.sourceUrl || undefined,
+        zoneLibelle: docData.zoneLabel,
       };
 
       const currentDoc = artifacts.document;
+      const documentStatus: 'loading' | 'ready' =
+        docData.hasAnalysis || docData.sourceUrl ? 'ready' : 'loading';
       
       // Initialize document artifact
       if (!currentDoc) {
         updateArtifactState('document', {
-          status: docData.htmlContent || (conversation?.has_analysis ?? false) ? 'ready' : 'loading',
+          status: documentStatus,
           data: documentData,
           renderingStatus: 'pending',
         });
@@ -382,6 +446,29 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         }
       } else {
         const currentDocData = currentDoc.data as DocumentArtifactData | undefined;
+        const metadataChanged =
+          !!currentDocData &&
+          (
+            documentData.title !== currentDocData.title ||
+            documentData.zoneLibelle !== currentDocData.zoneLibelle ||
+            documentData.cityName !== currentDocData.cityName ||
+            documentData.sourceUrl !== currentDocData.sourceUrl ||
+            documentData.type !== currentDocData.type ||
+            documentData.hasAnalysis !== currentDocData.hasAnalysis
+          );
+
+        if (currentDocData && metadataChanged) {
+          updateArtifactState('document', {
+            data: {
+              ...currentDocData,
+              ...documentData,
+              htmlContent: currentDocData.htmlContent ?? documentData.htmlContent,
+            },
+            status: documentStatus,
+            renderingStatus: currentDoc.renderingStatus,
+          });
+        }
+
         if (docData.htmlContent && currentDocData && !currentDocData.htmlContent) {
           // Update with HTML content when it arrives
           updateArtifactState('document', {
@@ -389,6 +476,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             data: {
               ...currentDocData,
               htmlContent: docData.htmlContent,
+              hasAnalysis: docData.hasAnalysis,
             },
             renderingStatus: 'pending',
           });
@@ -399,8 +487,18 @@ export default function ChatConversationPage({ params }: { params: { conversatio
             data: {
               ...currentDocData,
               htmlContent: docData.htmlContent,
+              hasAnalysis: docData.hasAnalysis,
             },
             renderingStatus: 'pending',
+          });
+        } else if (!docData.htmlContent && currentDocData && documentStatus === 'ready' && currentDoc.status !== 'ready') {
+          updateArtifactState('document', {
+            status: 'ready',
+            data: {
+              ...currentDocData,
+              hasAnalysis: docData.hasAnalysis,
+            },
+            renderingStatus: currentDoc.renderingStatus,
           });
         }
       }
@@ -415,6 +513,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     setArtifactTab,
     cityNameFromContext,
     inseeCodeFromContext,
+    conversation?.is_rnu,
   ]);
 
   // useEffect: reset refs when conversation changes
@@ -425,6 +524,12 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     setShowFinalAnalysisMessage(false);
     setLoadingMessageFadingOut(false);
   }, [params.conversation_id]);
+
+  useEffect(() => {
+    if (enrichment.status === 'complete') {
+      queryClient.invalidateQueries({ queryKey: ['conversation', params.conversation_id] });
+    }
+  }, [enrichment.status, queryClient, params.conversation_id]);
 
   // useEffect: UI state transition (enrichment completion)
   useEffect(() => {
@@ -852,6 +957,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   }
 
   const conversationStarted = !!conversation;
+  const showBreadcrumb = !!conversation?.project_id;
 
   const enrichmentBranch = (enrichment.data.branchType as ConversationBranch | undefined) || null;
   const persistedBranch =
@@ -906,8 +1012,10 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       throw error;
     }
 
-    // Update local state
-    setConversation({ ...conversation, title: newTitle });
+    queryClient.setQueryData<V2Conversation | null>(
+      ['conversation', params.conversation_id],
+      (prev) => (prev ? { ...prev, title: newTitle } : prev)
+    );
   };
 
   const handleDelete = async () => {
@@ -939,7 +1047,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   return (
     <>
       {/* Breadcrumb header */}
-      {conversation && (
+      {showBreadcrumb && conversation && (
         <ConversationBreadcrumb
           project={project}
           conversation={conversation}

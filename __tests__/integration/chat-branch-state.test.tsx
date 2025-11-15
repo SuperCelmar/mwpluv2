@@ -132,4 +132,41 @@ describe('ChatConversationPage branch-driven states', () => {
     await waitFor(() => expect(promptBoxProps).not.toBeNull());
     expect(promptBoxProps?.disabled).toBeFalsy();
   });
+
+  it('uses persisted branch metadata when enrichment hook has no branch data', async () => {
+    mockUseEnrichment.mockReturnValue({
+      status: 'pending',
+      retry: vi.fn(),
+      progress: {
+        enrichment: 'loading',
+        zones: 'loading',
+        municipality: 'loading',
+        city: 'loading',
+        zoning: 'loading',
+        zone: 'loading',
+        document: 'loading',
+        map: 'loading',
+      },
+      data: {},
+    } as UseEnrichmentReturn);
+
+    const persistedConversation = createMockV2Conversation({
+      id: 'conversation-branch',
+      project_id: 'project-branch',
+      branch_type: 'non_rnu_source',
+      has_analysis: false,
+    });
+
+    server.use(
+      http.get('*/rest/v1/v2_conversations', () => HttpResponse.json([persistedConversation])),
+      http.get('*/rest/v1/v2_messages', () => HttpResponse.json([])),
+      http.get('*/rest/v1/v2_research_history', () => HttpResponse.json([]))
+    );
+
+    renderPage();
+
+    await waitFor(() => expect(promptBoxProps).not.toBeNull());
+    expect(promptBoxProps?.disabled).toBe(true);
+    expect(promptBoxProps?.disabledTooltip).toBe('Impossible de discuter avec ce document.');
+  });
 });

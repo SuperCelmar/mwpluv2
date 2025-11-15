@@ -23,10 +23,20 @@ let mockV2Conversations: any[] = [];
 let mockV2Messages: any[] = [];
 let mockV2ConversationDocuments: any[] = [];
 let mockV2ResearchHistory: any[] = [];
+let mockDocuments: any[] = [];
 let projectIdCounter = 1;
 let v2ConversationIdCounter = 1;
 let v2MessageIdCounter = 1;
 let researchIdCounter = 1;
+
+const mockProfiles = [
+  {
+    id: 'test-user-id',
+    avatar_url: null,
+    full_name: 'Test User',
+    pseudo: 'TestUser',
+  },
+];
 
 // Reset mock data
 export const resetMockData = () => {
@@ -43,6 +53,7 @@ export const resetMockData = () => {
   mockV2Messages = [];
   mockV2ConversationDocuments = [];
   mockV2ResearchHistory = [];
+  mockDocuments = [];
   projectIdCounter = 1;
   v2ConversationIdCounter = 1;
   v2MessageIdCounter = 1;
@@ -413,6 +424,45 @@ Votre demande porte-t-elle sur une construction neuve, une extension, ou une ré
     filtered.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
     return HttpResponse.json(filtered);
+  }),
+
+  http.get('*/rest/v1/documents', ({ request }) => {
+    const url = new URL(request.url);
+    const idParam = url.searchParams.get('id');
+    const id = parsePostgRESTFilter(idParam);
+
+    if (id) {
+      const existing = mockDocuments.find((doc) => doc.id === id);
+      if (existing) {
+        return HttpResponse.json([existing]);
+      }
+
+      return HttpResponse.json([
+        {
+          id,
+          html_content: '<p>Document mock content</p>',
+          source_plu_url: 'https://example.com/mock-document.pdf',
+          typology_id: null,
+        },
+      ]);
+    }
+
+    return HttpResponse.json(mockDocuments);
+  }),
+
+  http.get('*/rest/v1/profiles', ({ request }) => {
+    const url = new URL(request.url);
+    const idParam = url.searchParams.get('id');
+    const id = parsePostgRESTFilter(idParam);
+
+    if (id) {
+      const profile = mockProfiles.find((p) => p.id === id);
+      if (profile) {
+        return HttpResponse.json([profile]);
+      }
+    }
+
+    return HttpResponse.json([]);
   }),
 
   // v2_conversation_documents handlers

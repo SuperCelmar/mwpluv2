@@ -35,7 +35,10 @@ export function ConversationBreadcrumb({
   const hasProject = project !== null;
 
   return (
-    <div className="border-b bg-white dark:bg-neutral-900 px-4 py-3">
+    <div
+      className="border-b bg-white dark:bg-neutral-900 px-4 py-3"
+      data-testid="conversation-breadcrumb"
+    >
       <Breadcrumb>
         <BreadcrumbList className="items-center">
           {/* Project breadcrumb */}

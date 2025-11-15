@@ -1,5 +1,21 @@
 # Changelog
 
+## 2025-11-15 - Duplicate Prefetch & Revisit UX
+
+### Added
+- **Duplicate hint UX** enhancements on the home page (`app/(app)/page.tsx`): always-visible branch badges, document metadata rows, and a CTA that runs a redirect-aware preload before navigation.
+- **Revisit coverage** in `__tests__/integration/chat-revisit-flow.test.tsx` to lock in breadcrumb behavior for lightweight conversations and to ensure completed threads skip the loading assistant.
+- **Prefetch helper** (`prefetchConversationForRedirect` in `lib/supabase/queries.ts`) that hydrates the React Query cache (conversation, messages, research history, project) prior to redirecting.
+
+### Changed
+- **Chat conversation page** (`app/(app)/chat/[conversation_id]/page.tsx`) now hydrates map/doc artifacts from persisted `document_metadata` and `enrichment_cache`, hides the breadcrumb until a project exists, and invalidates the conversation query once enrichment finishes.
+- **MSW fixtures** (`__tests__/mocks/handlers.ts`) serve `documents` and `profiles` endpoints so revisit flows and avatar lookups no longer throw.
+- **Chat branch tests** (`__tests__/integration/chat-branch-state.test.tsx`) assert that persisted branch metadata still gates the prompt input even when the enrichment hook has no branch data.
+- **Create-project tests** updated to expect the richer duplicate hint UI and to spy on the new prefetch helper.
+
+### Tests
+- `npx vitest run __tests__/integration/create-project.test.tsx __tests__/integration/chat-branch-state.test.tsx __tests__/integration/chat-revisit-flow.test.tsx`
+
 ## 2025-11-15 - RNU Branching & Duplicate UX
 
 ### Added

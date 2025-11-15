@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Home from '@/app/(app)/page';
 import * as supabaseModule from '@/lib/supabase';
+import * as supabaseQueriesModule from '@/lib/supabase/queries';
 
 const routerMocks = {
   push: vi.fn(),
@@ -263,10 +264,13 @@ describe('Create Project Flow (v2)', () => {
       expect(routerMocks.push).toHaveBeenCalledWith('/chat/conversation-duplicate');
     });
 
+    const hint = await screen.findByTestId('duplicate-hint');
+    expect(hint).toBeInTheDocument();
+
     duplicateSpy.mockRestore();
   });
 
-  it('shows inline duplicate hint when duplicate detected pre-submit', async () => {
+  it('shows inline duplicate hint with branch badge and metadata highlight', async () => {
     const duplicateSpy = vi
       .spyOn(supabaseModule, 'checkDuplicateByCoordinates')
       .mockResolvedValue({
@@ -275,8 +279,11 @@ describe('Create Project Flow (v2)', () => {
         branchType: 'rnu',
         hasAnalysis: false,
         isRnu: true,
+        projectName: 'Projet existant',
         documentMetadata: {
           zone_name: 'Zone UA1',
+          document_title: 'PLU Grenoble',
+          city_name: 'Grenoble',
         },
       });
 
@@ -296,13 +303,59 @@ describe('Create Project Flow (v2)', () => {
     const suggestion = screen.getByText(/15 Rue des Fustiers/);
     await user.click(suggestion);
 
-    await waitFor(() => {
-      const hint = screen.getByTestId('duplicate-hint');
-      expect(hint).toBeInTheDocument();
-      expect(hint.textContent).toContain('Branche RNU');
-    });
+    const hint = await screen.findByTestId('duplicate-hint');
+    expect(hint).toBeInTheDocument();
+    expect(screen.getByTestId('duplicate-branch-badge').textContent).toContain('Branche RNU');
+    expect(screen.getByText('Projet existant')).toBeInTheDocument();
+    expect(screen.getByText('Zone UA1')).toBeInTheDocument();
+    expect(screen.getByText('PLU Grenoble')).toBeInTheDocument();
 
     duplicateSpy.mockRestore();
+  });
+
+  it('prefetches conversation data before navigating to duplicate', async () => {
+    const duplicateSpy = vi
+      .spyOn(supabaseModule, 'checkDuplicateByCoordinates')
+      .mockResolvedValue({
+        exists: true,
+        conversationId: 'conversation-duplicate',
+        branchType: 'rnu',
+        hasAnalysis: false,
+        isRnu: true,
+      });
+
+    const prefetchSpy = vi
+      .spyOn(supabaseQueriesModule, 'prefetchConversationForRedirect')
+      .mockResolvedValue(undefined);
+
+    renderHome();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Chargement...')).not.toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/Entrez l'adresse de votre projet/i);
+    await user.type(input, '15 rue');
+
+    await waitFor(() => {
+      expect(screen.getByText(/15 Rue des Fustiers/)).toBeInTheDocument();
+    });
+
+    const suggestion = screen.getByText(/15 Rue des Fustiers/);
+    await user.click(suggestion);
+
+    await user.type(input, '{Enter}');
+
+    await waitFor(() => {
+      expect(prefetchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'conversation-duplicate' })
+      );
+    });
+
+    expect(routerMocks.push).toHaveBeenCalledWith('/chat/conversation-duplicate');
+
+    duplicateSpy.mockRestore();
+    prefetchSpy.mockRestore();
   });
 });
 

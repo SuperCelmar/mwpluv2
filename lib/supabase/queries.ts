@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 
 /**
@@ -123,6 +124,102 @@ export async function createInitialResearchHistoryEntry({
     }
   } catch (error) {
     console.error('[RESEARCH_HISTORY] Unexpected error creating entry:', error);
+  }
+}
+
+interface PrefetchConversationOptions {
+  queryClient: QueryClient;
+  conversationId: string;
+  userId: string;
+}
+
+export async function prefetchConversationForRedirect({
+  queryClient,
+  conversationId,
+  userId,
+}: PrefetchConversationOptions): Promise<void> {
+  if (!queryClient || !conversationId || !userId) {
+    return;
+  }
+
+  const fetchConversation = async () => {
+    const { data, error } = await supabase
+      .from('v2_conversations')
+      .select('*')
+      .eq('id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      throw new Error('Conversation not found for redirect prefetch');
+    }
+
+    return data;
+  };
+
+  const conversation = await queryClient.fetchQuery({
+    queryKey: ['conversation', conversationId],
+    queryFn: fetchConversation,
+  });
+
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: ['messages', conversationId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('v2_messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          throw error;
+        }
+
+        return data || [];
+      },
+    }),
+    queryClient.prefetchQuery({
+      queryKey: ['research-history', conversationId],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('v2_research_history')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+
+        return data || null;
+      },
+    }),
+  ]);
+
+  if (conversation?.project_id) {
+    await queryClient.prefetchQuery({
+      queryKey: ['project', conversation.project_id],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('v2_projects')
+          .select('*')
+          .eq('id', conversation.project_id)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        return data;
+      },
+    });
   }
 }
 
