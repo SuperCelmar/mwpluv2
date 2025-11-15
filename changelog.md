@@ -1,5 +1,20 @@
 # Changelog
 
+## 2025-11-15 - RNU Branching & Duplicate UX
+
+### Added
+- **Branch metadata helpers** (`lib/utils/branchMetadata.ts`, `__tests__/utils/branch-metadata.test.ts`) encapsulate duplicate-hint copy, document metadata payloads, and branch badges so both the worker and UI share a single source of truth.
+- **Duplicate hint UI** on the home page (`app/(app)/page.tsx`) now surfaces the existing conversation’s branch, zone, and document status before submit.
+
+### Changed
+- **Supabase duplicate checks** (`lib/supabase.ts`) now return branch/document metadata by peeking at the matched conversation, so the UI can render contextual hints without extra round trips.
+- **Conversation enrichment worker** (`lib/workers/conversationEnrichment.ts`) short-circuits the RNU path, links documents to conversations/projects, and persists a normalized `document_metadata` payload for duplicate detection and reloads.
+- **Chat conversation page** (`app/(app)/chat/[conversation_id]/page.tsx`) hydrates artifacts and chat gating from persisted metadata, fetches missing document/map data when revisiting a completed conversation, and keeps hook dependencies lint-clean.
+
+### Tests
+- `npm run test -- __tests__/integration/create-project.test.tsx __tests__/utils/branch-metadata.test.ts`
+- `npx next lint --file app/(app)/chat/[conversation_id]/page.tsx`
+
 ## 2025-11-15 - Schema Helpers & Conversation Metadata
 
 ### Added

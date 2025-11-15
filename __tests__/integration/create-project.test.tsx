@@ -236,6 +236,9 @@ describe('Create Project Flow (v2)', () => {
       .mockResolvedValue({
         exists: true,
         conversationId: 'conversation-duplicate',
+        branchType: 'rnu',
+        hasAnalysis: false,
+        isRnu: true,
       });
 
     renderHome();
@@ -269,6 +272,12 @@ describe('Create Project Flow (v2)', () => {
       .mockResolvedValue({
         exists: true,
         conversationId: 'conversation-duplicate',
+        branchType: 'rnu',
+        hasAnalysis: false,
+        isRnu: true,
+        documentMetadata: {
+          zone_name: 'Zone UA1',
+        },
       });
 
     renderHome();
@@ -288,7 +297,9 @@ describe('Create Project Flow (v2)', () => {
     await user.click(suggestion);
 
     await waitFor(() => {
-      expect(screen.getByTestId('duplicate-hint')).toBeInTheDocument();
+      const hint = screen.getByTestId('duplicate-hint');
+      expect(hint).toBeInTheDocument();
+      expect(hint.textContent).toContain('Branche RNU');
     });
 
     duplicateSpy.mockRestore();

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { ConversationBranch } from '@/types/enrichment';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -320,11 +321,24 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
  * Uses PostGIS ST_DWithin via RPC if available, otherwise falls back to client-side distance calculation
  * Returns conversation_id if duplicate found, null otherwise
  */
+export interface DuplicateCheckResult {
+  exists: boolean;
+  conversationId?: string;
+  projectId?: string | null;
+  conversationTitle?: string | null;
+  projectName?: string | null;
+  branchType?: ConversationBranch;
+  hasAnalysis?: boolean;
+  isRnu?: boolean;
+  documentMetadata?: any;
+  lastMessageAt?: string | null;
+}
+
 export async function checkDuplicateByCoordinates(
   lon: number,
   lat: number,
   userId: string
-): Promise<{ exists: boolean; conversationId?: string }> {
+): Promise<DuplicateCheckResult> {
   console.log('[DUPLICATE_CHECK] checkDuplicateByCoordinates called:', { lon, lat, userId });
 
   try {
@@ -338,10 +352,7 @@ export async function checkDuplicateByCoordinates(
 
     if (!rpcError && rpcData && rpcData.length > 0 && rpcData[0]?.conversation_id) {
       console.log('[DUPLICATE_CHECK] Duplicate found via RPC, conversation_id:', rpcData[0].conversation_id);
-      return {
-        exists: true,
-        conversationId: rpcData[0].conversation_id,
-      };
+      return await getDuplicateResultForConversation(rpcData[0].conversation_id);
     }
 
     // Fallback: query recent records and calculate distance client-side
@@ -362,7 +373,7 @@ async function checkDuplicateByCoordinatesFallback(
   lon: number,
   lat: number,
   userId: string
-): Promise<{ exists: boolean; conversationId?: string }> {
+): Promise<DuplicateCheckResult> {
   try {
     // Get recent research history records for this user with coordinates
     const { data, error } = await supabase
@@ -397,10 +408,7 @@ async function checkDuplicateByCoordinatesFallback(
 
         if (distance <= 50) {
           console.log('[DUPLICATE_CHECK] Duplicate found via fallback, distance:', distance.toFixed(2), 'm');
-          return {
-            exists: true,
-            conversationId: record.conversation_id!,
-          };
+          return await getDuplicateResultForConversation(record.conversation_id!);
         }
       }
     }
@@ -410,5 +418,78 @@ async function checkDuplicateByCoordinatesFallback(
   } catch (error) {
     console.error('[DUPLICATE_CHECK] Error in fallback:', error);
     return { exists: false };
+  }
+}
+
+async function getDuplicateResultForConversation(
+  conversationId: string
+): Promise<DuplicateCheckResult> {
+  const metadata = await fetchConversationDuplicateMetadata(conversationId);
+
+  if (!metadata) {
+    return {
+      exists: true,
+      conversationId,
+    };
+  }
+
+  return {
+    exists: true,
+    conversationId,
+    projectId: metadata.projectId,
+    conversationTitle: metadata.title,
+    projectName: metadata.projectName,
+    branchType: metadata.branchType,
+    hasAnalysis: metadata.hasAnalysis,
+    isRnu: metadata.isRnu,
+    documentMetadata: metadata.documentMetadata,
+    lastMessageAt: metadata.lastMessageAt,
+  };
+}
+
+async function fetchConversationDuplicateMetadata(conversationId: string) {
+  try {
+    const { data: conversation, error } = await supabase
+      .from('v2_conversations')
+      .select(
+        'id, title, project_id, branch_type, has_analysis, is_rnu, document_metadata, last_message_at'
+      )
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[DUPLICATE_CHECK] Failed to load conversation metadata:', error);
+      return null;
+    }
+
+    if (!conversation) {
+      return null;
+    }
+
+    let projectName: string | null = null;
+
+    if (conversation.project_id) {
+      const { data: project } = await supabase
+        .from('v2_projects')
+        .select('name')
+        .eq('id', conversation.project_id)
+        .maybeSingle();
+
+      projectName = project?.name ?? null;
+    }
+
+    return {
+      title: conversation.title as string | null,
+      projectId: conversation.project_id as string | null,
+      projectName,
+      branchType: conversation.branch_type as ConversationBranch,
+      hasAnalysis: conversation.has_analysis as boolean,
+      isRnu: conversation.is_rnu as boolean,
+      documentMetadata: conversation.document_metadata,
+      lastMessageAt: conversation.last_message_at as string | null,
+    };
+  } catch (metadataError) {
+    console.error('[DUPLICATE_CHECK] Unexpected metadata error:', metadataError);
+    return null;
   }
 }

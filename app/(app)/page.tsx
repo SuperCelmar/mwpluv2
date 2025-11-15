@@ -1,20 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { supabase, checkDuplicateByCoordinates } from '@/lib/supabase';
+import {
+  supabase,
+  checkDuplicateByCoordinates,
+  type DuplicateCheckResult,
+} from '@/lib/supabase';
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { AddressSuggestion, searchAddress } from '@/lib/address-api';
 import { createLightweightConversation, createInitialResearchHistoryEntry } from '@/lib/supabase/queries';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from '@/hooks/use-toast';
+import { buildDuplicateHintMessage, type DuplicateHintMessage } from '@/lib/utils/branchMetadata';
 
 export default function Home() {
   const router = useRouter();
   const [sendingMessage, setSendingMessage] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
   const [addressQuery, setAddressQuery] = useState('');
+  const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
+  const [duplicateHintMessage, setDuplicateHintMessage] = useState<DuplicateHintMessage | null>(null);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
 
   // Fetch user authentication using React Query
   const { data: user, isLoading: loading } = useQuery({
@@ -44,15 +52,69 @@ export default function Home() {
 
   const showAddressSuggestions = debouncedAddressQuery.length >= 3 && !selectedAddress && addressSuggestions.length > 0;
 
+  const resetDuplicateState = useCallback(() => {
+    setDuplicateResult(null);
+    setDuplicateHintMessage(null);
+  }, []);
+
+  const updateDuplicateHintFromResult = useCallback(
+    (addressLabel: string, result: DuplicateCheckResult) => {
+      setDuplicateResult(result);
+      if (result.exists && result.conversationId) {
+        const hint = buildDuplicateHintMessage({
+          addressLabel,
+          branchType: result.branchType,
+          hasAnalysis: result.hasAnalysis,
+          isRnu: result.isRnu,
+          zoneName: result.documentMetadata?.zone_name ?? result.documentMetadata?.zone_code,
+          documentTitle: result.documentMetadata?.document_title ?? undefined,
+          lastUpdatedAt: result.lastMessageAt ?? undefined,
+        });
+        setDuplicateHintMessage(hint);
+      }
+    },
+    []
+  );
+
   const handleAddressInputChange = (value: string) => {
     setAddressQuery(value);
     setSelectedAddress(null);
+    resetDuplicateState();
   };
 
   const handleAddressSelect = (address: AddressSuggestion) => {
     setSelectedAddress(address);
     setAddressQuery(address.properties.label);
+    if (!userId) return;
+    const lon = address.geometry?.coordinates?.[0];
+    const lat = address.geometry?.coordinates?.[1];
+    if (lon === undefined || lat === undefined) {
+      resetDuplicateState();
+      return;
+    }
+    setCheckingDuplicate(true);
+    checkDuplicateByCoordinates(lon, lat, userId)
+      .then((result) => {
+        if (result.exists && result.conversationId) {
+          updateDuplicateHintFromResult(address.properties.label, result);
+        } else {
+          resetDuplicateState();
+        }
+      })
+      .catch((error) => {
+        console.error('[DUPLICATE_CHECK] Prefetch error:', error);
+        resetDuplicateState();
+      })
+      .finally(() => setCheckingDuplicate(false));
   };
+
+  const navigateToConversation = useCallback(
+    (conversationId: string) => {
+      resetDuplicateState();
+      router.push(`/chat/${conversationId}`);
+    },
+    [resetDuplicateState, router]
+  );
 
   const handleAddressSubmit = async (address: AddressSuggestion) => {
     console.log('[ADDRESS_SUBMIT_HANDLER] Address submit handler called with address:', {
@@ -79,9 +141,16 @@ export default function Home() {
       if (lon !== undefined && lat !== undefined) {
         console.log('[DUPLICATE_CHECK] Checking for duplicate by coordinates');
         
-        const duplicateCheck = await checkDuplicateByCoordinates(lon, lat, userId);
+        let duplicateCheck = duplicateResult;
+
+        if (!duplicateCheck) {
+          duplicateCheck = await checkDuplicateByCoordinates(lon, lat, userId);
+          if (duplicateCheck.exists && duplicateCheck.conversationId) {
+            updateDuplicateHintFromResult(addressLabel, duplicateCheck);
+          }
+        }
         
-        if (duplicateCheck.exists && duplicateCheck.conversationId) {
+        if (duplicateCheck?.exists && duplicateCheck.conversationId) {
           console.log('[DUPLICATE_CHECK] Duplicate detected, conversation_id:', duplicateCheck.conversationId);
           
           toast({
@@ -93,7 +162,7 @@ export default function Home() {
           setSendingMessage(false);
           
           setTimeout(() => {
-            router.push(`/chat/${duplicateCheck.conversationId}`);
+            navigateToConversation(duplicateCheck!.conversationId!);
           }, 500);
           
           return;
@@ -125,6 +194,7 @@ export default function Home() {
       // Step 3: Navigate immediately (enrichment happens in background on chat page)
       console.log('[NAVIGATION] Navigating immediately to chat page:', `/chat/${conversationId}`);
       setSendingMessage(false);
+      resetDuplicateState();
       router.push(`/chat/${conversationId}`);
     } catch (error) {
       console.error('[ERROR] Error in address submit handler:', error);
@@ -193,6 +263,27 @@ export default function Home() {
           showAddressSuggestions={showAddressSuggestions}
           onAddressInputChange={handleAddressInputChange}
         />
+        {duplicateResult?.exists && duplicateHintMessage && (
+          <div
+            data-testid="duplicate-hint"
+            className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900"
+          >
+            <div className="text-sm font-semibold">{duplicateHintMessage.title}</div>
+            <div className="mt-1 text-xs text-amber-800">{duplicateHintMessage.subtitle}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                onClick={() => duplicateResult.conversationId && navigateToConversation(duplicateResult.conversationId)}
+              >
+                Ouvrir la conversation
+              </button>
+              {checkingDuplicate && (
+                <span className="text-xs text-amber-700">Vérification en cours…</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

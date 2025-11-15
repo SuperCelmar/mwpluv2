@@ -127,7 +127,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
 
     // Add initial address as first message if it exists and no messages yet
-    const initialAddress = (conversation.context_metadata as any)?.initial_address;
+    const initialAddress = conversationContextMetadata?.initial_address;
     if (initialAddress) {
       const addressMessage: V2Message = {
         id: `initial-address-${conversation.id}`,
@@ -152,7 +152,13 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
 
     return messagesData;
-  }, [conversation, messagesData, params.conversation_id, userId]);
+  }, [
+    conversation,
+    messagesData,
+    params.conversation_id,
+    userId,
+    conversationContextMetadata?.initial_address,
+  ]);
 
   const isFirstMessage = messages.length === 0 || (messages.length === 1 && messages[0].message_type === 'address_search');
 
@@ -203,19 +209,32 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     }
   }, [messages]);
 
-  // Fetch zone name using React Query when enrichment completes
+  const conversationContextMetadata = conversation?.context_metadata as any;
+  const cityNameFromContext = conversationContextMetadata?.city || '';
+  const inseeCodeFromContext = conversationContextMetadata?.insee_code || '';
+  const persistedEnrichment = conversationContextMetadata?.enrichment;
+  const resolvedZoneId =
+    enrichment.data.zoneId || persistedEnrichment?.zone_id || null;
+  const conversationDocumentMetadata = (conversation?.document_metadata as any) || null;
+  const resolvedDocumentId =
+    enrichment.data.documentData?.documentId ||
+    conversation?.primary_document_id ||
+    conversationDocumentMetadata?.document_id ||
+    null;
+
+  // Fetch zone name/geometry using React Query when available
   const { data: zoneData } = useQuery({
-    queryKey: ['zone-name', enrichment.data.zoneId],
+    queryKey: ['zone-name', resolvedZoneId],
     queryFn: async () => {
-      if (!enrichment.data.zoneId) return null;
+      if (!resolvedZoneId) return null;
       const { data } = await supabase
         .from('zones')
-        .select('description, name')
-        .eq('id', enrichment.data.zoneId)
+        .select('description, name, geometry')
+        .eq('id', resolvedZoneId)
         .maybeSingle();
       return data;
     },
-    enabled: enrichment.status === 'complete' && !!enrichment.data.zoneId && !zoneName,
+    enabled: !!resolvedZoneId && !zoneName,
     onSuccess: (data) => {
       if (data) {
         const extractedZoneName = data.description || data.name || '';
@@ -226,12 +245,25 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     },
   });
 
+  const { data: persistedDocument } = useQuery({
+    queryKey: ['document-artifact', resolvedDocumentId],
+    queryFn: async () => {
+      if (!resolvedDocumentId) return null;
+      const { data } = await supabase
+        .from('documents')
+        .select('id, html_content, source_plu_url, typology_id')
+        .eq('id', resolvedDocumentId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!resolvedDocumentId && !enrichment.data.documentData?.htmlContent,
+  });
+
   // useEffect: state synchronization (map artifact sync)
   useEffect(() => {
-    const contextMetadata = conversation?.context_metadata as any;
-    const lon = contextMetadata?.geocoded?.lon;
-    const lat = contextMetadata?.geocoded?.lat;
-    const mapGeometry = enrichment.data.mapGeometry;
+    const lon = conversationContextMetadata?.geocoded?.lon;
+    const lat = conversationContextMetadata?.geocoded?.lat;
+    const mapGeometry = enrichment.data.mapGeometry || (zoneData as any)?.geometry || null;
 
     // Initialize map artifact when coordinates are available
     // Works for both active enrichment and completed conversations
@@ -239,12 +271,12 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       const currentMap = artifacts.map;
       
       // Initialize map with just coordinates if we don't have geometry yet
-      const mapData: MapArtifactData = {
-        center: { lat, lon },
-        geometry: mapGeometry || undefined, // Geometry is optional now
-        cityName: contextMetadata?.city || '',
-        zoneName: zoneName || undefined,
-      };
+    const mapData: MapArtifactData = {
+      center: { lat, lon },
+      geometry: mapGeometry || undefined, // Geometry is optional now
+      cityName: cityNameFromContext,
+      zoneName: zoneName || undefined,
+    };
 
       // If map doesn't exist yet, initialize it with coordinates
       if (!currentMap) {
@@ -278,22 +310,58 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         }
       }
     }
-  }, [enrichment.data.mapGeometry, enrichment.status, conversation, zoneName, artifacts.map, updateArtifactState]);
+  }, [
+    enrichment.data.mapGeometry,
+    zoneData,
+    enrichment.status,
+    conversation,
+    conversationContextMetadata,
+    cityNameFromContext,
+    zoneName,
+    artifacts.map,
+    updateArtifactState,
+  ]);
+
+  const resolvedDocumentData = useMemo(() => {
+    if (enrichment.data.documentData?.documentId) {
+      return enrichment.data.documentData;
+    }
+
+    if (!resolvedDocumentId) {
+      return null;
+    }
+
+    return {
+      documentId: resolvedDocumentId,
+      htmlContent: persistedDocument?.html_content || null,
+      hasAnalysis: conversation?.has_analysis ?? false,
+      sourceUrl:
+        enrichment.data.documentData?.sourceUrl ||
+        conversationDocumentMetadata?.source_plu_url ||
+        persistedDocument?.source_plu_url ||
+        null,
+    };
+  }, [
+    enrichment.data.documentData,
+    resolvedDocumentId,
+    persistedDocument,
+    conversation?.has_analysis,
+    conversationDocumentMetadata,
+  ]);
 
   // useEffect: state synchronization (document artifact sync)
   useEffect(() => {
-    if (enrichment.data.documentData?.documentId) {
-      const docData = enrichment.data.documentData;
-      if (!docData.documentId) return; // Type guard
-      
+    if (resolvedDocumentData?.documentId) {
+      const docData = resolvedDocumentData;
       const documentData: DocumentArtifactData = {
         documentId: docData.documentId,
         title: 'Document PLU',
         type: 'PLU',
         htmlContent: docData.htmlContent || undefined,
         hasAnalysis: docData.hasAnalysis,
-        cityName: (conversation?.context_metadata as any)?.city || '',
-        inseeCode: (conversation?.context_metadata as any)?.insee_code || '',
+          cityName: cityNameFromContext,
+          inseeCode: inseeCodeFromContext,
+        sourceUrl: docData.sourceUrl || undefined,
       };
 
       const currentDoc = artifacts.document;
@@ -301,7 +369,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       // Initialize document artifact
       if (!currentDoc) {
         updateArtifactState('document', {
-          status: docData.htmlContent ? 'ready' : 'loading',
+          status: docData.htmlContent || (conversation?.has_analysis ?? false) ? 'ready' : 'loading',
           data: documentData,
           renderingStatus: 'pending',
         });
@@ -337,7 +405,17 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         }
       }
     }
-  }, [enrichment.data.documentData, conversation, artifacts.document, isPanelOpen, artifactActiveTab, updateArtifactState, setArtifactTab]);
+  }, [
+    resolvedDocumentData,
+    conversation,
+    artifacts.document,
+    isPanelOpen,
+    artifactActiveTab,
+    updateArtifactState,
+    setArtifactTab,
+    cityNameFromContext,
+    inseeCodeFromContext,
+  ]);
 
   // useEffect: reset refs when conversation changes
   useEffect(() => {
@@ -428,8 +506,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           metadata: {
             geometry: enrichment.data.mapGeometry,
             center: {
-              lat: (conversation.context_metadata as any)?.geocoded?.lat,
-              lon: (conversation.context_metadata as any)?.geocoded?.lon,
+              lat: conversationContextMetadata?.geocoded?.lat,
+              lon: conversationContextMetadata?.geocoded?.lon,
             },
             zoneId: enrichment.data.zoneId,
           },
@@ -564,7 +642,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       setIsPanelOpen(true);
       setArtifactTab('map');
     }
-  }, [conversation, messages, enrichment.status, isPanelOpen, setArtifactTab]);
+  }, [conversation, messages, enrichment.status, conversationContextMetadata, isPanelOpen, setArtifactTab]);
 
   // Handle map rendering completion
   const handleMapRenderComplete = () => {
@@ -608,7 +686,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   // Load artifacts for completed conversations
   useEffect(() => {
     if (conversation?.enrichment_status === 'completed' && researchContext) {
-      const contextMetadata = conversation.context_metadata as any;
+      const contextMetadata = conversationContextMetadata;
       
       // Load document artifact if document_id exists in research
       if (researchContext.documents_found && researchContext.documents_found.length > 0) {
@@ -630,7 +708,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         });
       }
     }
-  }, [conversation?.enrichment_status, researchContext, updateArtifactState]);
+  }, [conversation?.enrichment_status, researchContext, conversationContextMetadata, updateArtifactState]);
 
   // Send message mutation
   const sendMessageMutation = useMutation({
@@ -643,7 +721,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         message: content,
         user_id: userId,
         conversation_id: params.conversation_id,
-        context_metadata: conversation.context_metadata,
+        context_metadata: conversationContextMetadata,
       };
 
       if (researchContext?.geo_lon && researchContext?.geo_lat) {
@@ -855,7 +933,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   const conversationName =
     conversation.title ||
-    (conversation.context_metadata as any)?.initial_address ||
+    conversationContextMetadata?.initial_address ||
     'Conversation';
 
   return (
@@ -992,7 +1070,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
               {sendingMessage && messages.length > 0 && (
                 <div className="flex items-center gap-2 text-gray-500 py-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">L'assistant réfléchit...</span>
+                  <span className="text-sm">L&apos;assistant réfléchit...</span>
                 </div>
               )}
             </div>

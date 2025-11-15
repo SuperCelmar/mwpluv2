@@ -4,6 +4,44 @@ import { getOrCreateCity, getOrCreateZoning, getOrCreateZone } from '../geo-enri
 import { setCachedConversationData } from '../utils/conversationCache';
 import { logChatEvent } from '../analytics';
 import { ConversationBranch } from '@/types/enrichment';
+import { buildDocumentMetadataPayload } from '@/lib/utils/branchMetadata';
+
+async function ensureDocumentLinks({
+  conversationId,
+  projectId,
+  documentId,
+}: {
+  conversationId: string;
+  projectId?: string | null;
+  documentId: string;
+}) {
+  try {
+    await supabase
+      .from('v2_conversation_documents')
+      .upsert(
+        {
+          conversation_id: conversationId,
+          document_id: documentId,
+          added_by: 'ai_auto',
+        },
+        { onConflict: 'conversation_id,document_id' }
+      );
+
+    if (projectId) {
+      await supabase
+        .from('v2_project_documents')
+        .upsert(
+          {
+            project_id: projectId,
+            document_id: documentId,
+          },
+          { onConflict: 'project_id,document_id' }
+        );
+    }
+  } catch (linkError) {
+    console.error('[ENRICHMENT_WORKER] Failed to persist document links:', linkError);
+  }
+}
 
 /**
  * Operation names for enrichment tracking
@@ -167,67 +205,57 @@ export async function enrichConversation(
       }
     }
 
-    // Step 3: Define parallel operations
-    // Some operations can run independently, others need dependencies
-    // We'll use Promise.allSettled to run independent ones first, then dependent ones
+    // Step 3: Fetch municipality first to determine branch flow
+    console.log('[ENRICHMENT_WORKER] Fetching municipality from API');
+    const municipalityStart = Date.now();
+    let municipality: any = null;
+    try {
+      municipality = await fetchMunicipality({ insee_code: inseeCode });
+      result.operationTimes.municipality = Date.now() - municipalityStart;
+      if (!municipality) {
+        throw new Error('Municipality not found');
+      }
+    } catch (error) {
+      result.errors.municipality = error instanceof Error ? error : new Error(String(error));
+      result.operationTimes.municipality = Date.now() - municipalityStart;
+      throw error;
+    }
 
-    // Independent operations that can run immediately
-    const independentOps = {
-      zones: async () => {
-        const opStart = Date.now();
-        try {
-          console.log('[ENRICHMENT_WORKER] Fetching zones from API');
-          const zones = await fetchZoneUrba({ lon, lat });
-          result.operationTimes.zones = Date.now() - opStart;
-          
-          if (zones && zones.length > 0) {
-            return zones;
-          }
-          throw new Error('No zones found');
-        } catch (error) {
-          result.errors.zones = error instanceof Error ? error : new Error(String(error));
-          result.operationTimes.zones = Date.now() - opStart;
-          throw error;
-        }
-      },
-
-      municipality: async () => {
-        const opStart = Date.now();
-        try {
-          console.log('[ENRICHMENT_WORKER] Fetching municipality from API');
-          const municipality = await fetchMunicipality({ insee_code: inseeCode });
-          result.operationTimes.municipality = Date.now() - opStart;
-          
-          if (!municipality) {
-            throw new Error('Municipality not found');
-          }
-          return municipality;
-        } catch (error) {
-          result.errors.municipality = error instanceof Error ? error : new Error(String(error));
-          result.operationTimes.municipality = Date.now() - opStart;
-          throw error;
-        }
-      },
-    };
-
-    // Run independent operations first
-    console.log('[ENRICHMENT_WORKER] Starting independent operations in parallel');
-    const independentResults = await Promise.allSettled([
-      independentOps.zones(),
-      independentOps.municipality(),
-    ]);
-
-    const zonesResult = independentResults[0].status === 'fulfilled' ? independentResults[0].value : null;
-    const municipalityResult = independentResults[1].status === 'fulfilled' ? independentResults[1].value : null;
-
-    // Extract data from successful operations
-    const zones = zonesResult as any[] | null;
-    const municipality = municipalityResult as any | null;
     const isRnu = municipality?.properties?.is_rnu === true;
-    const typezone = zones && zones.length > 0 ? zones[0].properties?.typezone : null;
-    const zoneCode = zones && zones.length > 0 ? zones[0].properties?.libelle : null;
-    const zoneName = zones && zones.length > 0 ? (zones[0].properties?.libelong || zones[0].properties?.libelle) : null;
-    const zoneGeometry = zones && zones.length > 0 ? zones[0].geometry : null;
+    if (isRnu) {
+      result.branchType = 'rnu';
+    }
+
+    let zones: any[] | null = null;
+    let typezone: string | null = null;
+    let zoneCode: string | null = null;
+    let zoneName: string | null = null;
+    let zoneGeometry: any | null = null;
+
+    if (!isRnu) {
+      console.log('[ENRICHMENT_WORKER] Fetching zones from API');
+      const zonesStart = Date.now();
+      try {
+        zones = await fetchZoneUrba({ lon, lat });
+        result.operationTimes.zones = Date.now() - zonesStart;
+
+        if (zones && zones.length > 0) {
+          const firstZone = zones[0];
+          typezone = firstZone.properties?.typezone || null;
+          zoneCode = firstZone.properties?.libelle || null;
+          zoneName = firstZone.properties?.libelong || firstZone.properties?.libelle || null;
+          zoneGeometry = firstZone.geometry || null;
+        } else {
+          throw new Error('No zones found');
+        }
+      } catch (error) {
+        result.errors.zones = error instanceof Error ? error : new Error(String(error));
+        result.operationTimes.zones = Date.now() - zonesStart;
+        throw error;
+      }
+    } else {
+      result.operationTimes.zones = 0;
+    }
 
     // Dependent operations - these need results from independent operations
     const dependentOps = {
@@ -477,13 +505,39 @@ export async function enrichConversation(
 
     // Run dependent operations in parallel
     console.log('[ENRICHMENT_WORKER] Starting dependent operations in parallel');
-    await Promise.allSettled([
+    const dependentTasks = [
       dependentOps.city(),
       dependentOps.zoning(),
-      dependentOps.zone(),
       dependentOps.document(),
       dependentOps.map(),
-    ]);
+    ];
+
+    if (!isRnu && zoneCode) {
+      dependentTasks.push(dependentOps.zone());
+    }
+
+    await Promise.allSettled(dependentTasks);
+
+    // Determine final branch type
+    if (!result.branchType) {
+      if (isRnu) {
+        result.branchType = 'rnu';
+      } else if (result.documentData?.hasAnalysis) {
+        result.branchType = 'non_rnu_analysis';
+      } else {
+        result.branchType = 'non_rnu_source';
+      }
+    }
+
+    const documentMetadataPayload = buildDocumentMetadataPayload({
+      branchType: result.branchType,
+      documentId: result.documentData?.documentId,
+      zoneCode: zoneCode || undefined,
+      zoneName: zoneName || undefined,
+      cityName: municipality?.properties?.name || communeName || undefined,
+      sourceUrl: result.documentData?.sourceUrl,
+      mapGeometryAvailable: !!result.mapGeometry,
+    });
 
     // Step 4: Update database with enriched data
     console.log('[ENRICHMENT_WORKER] Updating database with enriched data');
@@ -496,9 +550,11 @@ export async function enrichConversation(
         has_analysis: result.documentData?.hasAnalysis || false,
         is_rnu: isRnu,
         primary_document_id: result.documentData?.documentId || null,
-        document_metadata: documentMetadataPayload,
       };
 
+      if (documentMetadataPayload) {
+        researchUpdate.document_metadata = documentMetadataPayload;
+      }
       if (result.cityId) {
         researchUpdate.city_id = result.cityId;
       }
@@ -515,15 +571,12 @@ export async function enrichConversation(
         .eq('id', researchId);
     }
 
-    // Ensure branchType is set for downstream consumers
-    if (!result.branchType) {
-      if (isRnu) {
-        result.branchType = 'rnu';
-      } else if (result.documentData?.hasAnalysis) {
-        result.branchType = 'non_rnu_analysis';
-      } else {
-        result.branchType = 'non_rnu_source';
-      }
+    if (result.documentData?.documentId) {
+      await ensureDocumentLinks({
+        conversationId,
+        projectId,
+        documentId: result.documentData.documentId,
+      });
     }
 
     // Update conversation context_metadata with enrichment data
@@ -539,18 +592,6 @@ export async function enrichConversation(
         is_rnu: isRnu,
       },
     };
-
-    const documentMetadataPayload = result.documentData
-      ? {
-          document_id: result.documentData.documentId,
-          zone_code: zoneCode,
-          zone_name: zoneName,
-          city_name: municipality?.properties?.name || communeName || null,
-          source_plu_url: result.documentData.sourceUrl,
-          map_geometry_available: !!result.mapGeometry,
-          enriched_at: new Date().toISOString(),
-        }
-      : null;
 
     await supabase
       .from('v2_conversations')
@@ -578,6 +619,7 @@ export async function enrichConversation(
           branch_type: result.branchType,
           document_summary: result.documentData?.htmlContent ? 'Analysis available' : undefined,
           cache_version: 1,
+          document_metadata: documentMetadataPayload ?? undefined,
         });
       } catch (cacheError) {
         console.error('[ENRICHMENT_WORKER] Error caching results:', cacheError);
