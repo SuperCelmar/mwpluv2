@@ -40,7 +40,7 @@ interface ArtifactStore {
   /**
    * Initialize a conversation's artifact state
    */
-  initializeConversation: (conversationId: string) => void;
+  initializeConversation: (conversationId: string, initialTab?: 'map' | 'document') => void;
 
   /**
    * Update an artifact for a specific conversation
@@ -70,10 +70,25 @@ interface ArtifactStore {
 export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   conversations: {},
 
-  initializeConversation: (conversationId) => {
+  initializeConversation: (conversationId, initialTab = 'map') => {
     set((state) => {
-      // Only initialize if not already exists
-      if (state.conversations[conversationId]) {
+      const existing = state.conversations[conversationId];
+
+      if (existing) {
+        if (
+          initialTab &&
+          existing.activeTab !== initialTab
+        ) {
+          return {
+            conversations: {
+              ...state.conversations,
+              [conversationId]: {
+                ...existing,
+                activeTab: initialTab,
+              },
+            },
+          };
+        }
         return state;
       }
 
@@ -86,7 +101,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
               map: null,
               document: null,
             },
-            activeTab: 'map',
+            activeTab: initialTab,
           },
         },
       };

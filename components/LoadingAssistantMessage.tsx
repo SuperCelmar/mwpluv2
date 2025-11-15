@@ -7,6 +7,7 @@ import { TextShimmer } from '@/components/ui/text-shimmer';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import type { UseEnrichmentReturn } from '@/app/(app)/chat/[conversation_id]/useEnrichment';
 import type { ConversationBranch } from '@/types/enrichment';
+import { getBranchLoadingMessages } from '@/lib/utils/branchMetadata';
 
 interface LoadingAssistantMessageProps {
   enrichment: UseEnrichmentReturn;
@@ -30,12 +31,8 @@ export function LoadingAssistantMessage({
   const branchType: ConversationBranch =
     (enrichment.data?.branchType as ConversationBranch) ||
     (enrichment.data?.documentData?.hasAnalysis ? 'non_rnu_analysis' : 'non_rnu_source');
-  const shouldShowAnalysisStep = branchType === 'non_rnu_analysis';
-  const step2Message =
-    branchType === 'rnu'
-      ? 'Récupération du RNU...'
-      : 'Vérification de la présence d\'analyse...';
-  const step3Message = 'Récupération de l\'analyse correspondante...';
+  const loadingMessages = getBranchLoadingMessages({ branchType });
+  const shouldShowAnalysisStep = !!loadingMessages.step3;
   
   // Track timestamps for timing control
   const mapPolygonRenderedTimestamp = useRef<number | null>(null);
@@ -167,10 +164,10 @@ export function LoadingAssistantMessage({
 
   const currentMessage =
     loadingStage === 'step1'
-      ? 'Vérification de la zone concernée...'
+      ? loadingMessages.step1
       : loadingStage === 'step2'
-        ? step2Message
-        : step3Message;
+        ? loadingMessages.step2
+        : loadingMessages.step3 ?? loadingMessages.step2;
 
   return (
     <div

@@ -476,6 +476,7 @@ function DocumentInlineCard({
   const zoneLibelle = docData?.zoneLibelle;
   const cityName = docData?.cityName || '';
   const sourceDate = docData?.sourceDate;
+  const hasAnalysis = docData?.hasAnalysis ?? false;
 
   // Format date if available
   const formattedDate = sourceDate 
@@ -501,7 +502,9 @@ function DocumentInlineCard({
             <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
             <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
           </div>
-          <p className="text-xs text-gray-600 mb-3">Document disponible</p>
+          <p className="text-xs text-gray-600 mb-3">
+            {hasAnalysis ? 'Analyse disponible' : 'Document source'}
+          </p>
           <div className="space-y-1.5 text-xs text-gray-600">
             <div className="flex items-center gap-2">
               <span className="text-gray-400">•</span>

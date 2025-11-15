@@ -1,14 +1,19 @@
 'use client';
 
+import { useEffect } from 'react';
 import { ArtifactSkeleton } from '../ArtifactSkeleton';
 import { ErrorCard } from '@/components/ui/ErrorCard';
 import { DocumentViewer } from '@/components/DocumentViewer';
-import { Loader2 } from 'lucide-react';
+import { Loader2, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface DocumentData {
   htmlContent: string | null;
   documentId: string | null;
+  sourceUrl?: string | null;
+  title?: string | null;
+  type?: 'PLU' | 'POS' | 'RNU';
+  hasAnalysis?: boolean;
 }
 
 interface DocumentCardProps {
@@ -38,6 +43,12 @@ export function DocumentCard({
       });
     }
   };
+
+  useEffect(() => {
+    if (status === 'ready' && data && !data.htmlContent && onRenderComplete) {
+      onRenderComplete();
+    }
+  }, [status, data, onRenderComplete]);
 
   // Skeleton state - show immediately
   if (status === 'skeleton') {
@@ -93,15 +104,50 @@ export function DocumentCard({
 
   // Ready state - show actual document
   if (status === 'ready') {
+    if (data?.htmlContent) {
+      return (
+        <div className={cn(
+          'h-full w-full transition-all duration-300 ease-in-out',
+          className
+        )}>
+          <DocumentViewer 
+            htmlContent={data?.htmlContent ?? null}
+            onRenderComplete={onRenderComplete}
+          />
+        </div>
+      );
+    }
+
     return (
-      <div className={cn(
-        'h-full w-full transition-all duration-300 ease-in-out',
-        className
-      )}>
-        <DocumentViewer 
-          htmlContent={data?.htmlContent ?? null}
-          onRenderComplete={onRenderComplete}
-        />
+      <div
+        className={cn(
+          'h-full w-full flex items-center justify-center p-8 bg-white',
+          className
+        )}
+      >
+        <div className="max-w-md text-center space-y-4">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <FileText className="h-6 w-6" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-gray-900">
+              Nous n'avons pas encore couvert cette zone.
+            </h3>
+            <p className="text-sm text-gray-600">
+              En attendant l'analyse, consultez le document source mis à disposition.
+            </p>
+          </div>
+          {data?.sourceUrl && (
+            <a
+              href={data.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center rounded-full border border-blue-200 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              Ouvrir le document source
+            </a>
+          )}
+        </div>
       </div>
     );
   }

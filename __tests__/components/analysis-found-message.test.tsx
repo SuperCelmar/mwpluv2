@@ -75,7 +75,7 @@ describe('AnalysisFoundMessage variants', () => {
       />
     );
 
-    expect(screen.getByText('Voici le RNU')).toBeInTheDocument();
+    expect(screen.getByText('Voici le RNU.')).toBeInTheDocument();
   });
 
   it('renders source document copy when no analysis is available', () => {
@@ -99,9 +99,10 @@ describe('AnalysisFoundMessage variants', () => {
     );
 
     expect(
-      screen.getByText(
-        "Nous n'avons pas encore couverte cette zone, voici le lien vers le document source."
-      )
+      screen.getByText("Nous n'avons pas encore couvert cette zone.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Voici le lien vers le document source.')
     ).toBeInTheDocument();
   });
 
@@ -126,7 +127,7 @@ describe('AnalysisFoundMessage variants', () => {
     );
 
     expect(
-      screen.getByText("Voici l'analyse de la zone UA1 Grenoble")
+      screen.getByText("Voici l'analyse de la zone UA1 Grenoble.")
     ).toBeInTheDocument();
   });
 });

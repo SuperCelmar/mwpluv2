@@ -32,6 +32,8 @@ type ZoneRecord = {
   geometry: any | null;
 };
 
+type MinimalDocument = Pick<Document, 'id' | 'html_content' | 'source_plu_url' | 'typology_id'>;
+
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -42,6 +44,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasAutoOpenedPanelRef = useRef(false);
+  const autoTabTriggeredRef = useRef(false);
   const analysisMessageSavedRef = useRef(false);
   const [analysisMessageTextComplete, setAnalysisMessageTextComplete] = useState<Record<string, boolean>>({});
   const [showFinalAnalysisMessage, setShowFinalAnalysisMessage] = useState(false);
@@ -116,6 +119,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     },
     enabled: !!userId && !!conversation?.project_id,
   });
+
+  const resolvedProject = project ?? null;
 
   // Fetch messages using React Query
   const { data: messagesData = [] } = useQuery<V2Message[]>({
@@ -204,10 +209,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const loading = conversationLoading;
 
   // Use enrichment hook for background enrichment
-  const enrichment = useEnrichment(params.conversation_id, conversation);
+  const enrichment = useEnrichment(params.conversation_id, conversation ?? null);
+
+  const conversationDocumentMetadata = (conversation?.document_metadata as any) || null;
 
   // Use artifact sync hook for managing artifacts
-  const artifactSync = useArtifactSync(params.conversation_id);
+  const artifactSync = useArtifactSync(params.conversation_id, {
+    initialMetadata: conversationDocumentMetadata,
+  });
   
   // Extract stable methods and values to avoid including entire artifactSync object in dependencies
   const { 
@@ -232,7 +241,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   const persistedEnrichment = conversationContextMetadata?.enrichment;
   const resolvedZoneId =
     enrichment.data.zoneId || persistedEnrichment?.zone_id || null;
-  const conversationDocumentMetadata = (conversation?.document_metadata as any) || null;
   const resolvedDocumentId =
     enrichment.data.documentData?.documentId ||
     conversation?.primary_document_id ||
@@ -252,14 +260,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       return data;
     },
     enabled: !!resolvedZoneId && !zoneName,
-    onSuccess: (data) => {
-      if (data) {
-        const extractedZoneName = data.description || data.name || '';
-        if (extractedZoneName) {
-          setZoneName(extractedZoneName);
-        }
-      }
-    },
   });
 
   useEffect(() => {
@@ -267,6 +267,16 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       setZoneName(enrichmentCache.zone_name);
     }
   }, [enrichmentCache?.zone_name, zoneName]);
+
+  // useEffect: state synchronization (zone name from query result)
+  useEffect(() => {
+    if (zoneData && !zoneName) {
+      const extractedZoneName = zoneData.description || zoneData.name || '';
+      if (extractedZoneName) {
+        setZoneName(extractedZoneName);
+      }
+    }
+  }, [zoneData, zoneName]);
 
   const resolvedMapGeometry = useMemo(() => {
     if (enrichment.data.mapGeometry) {
@@ -279,7 +289,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     return zoneGeometry || null;
   }, [enrichment.data.mapGeometry, enrichmentCache?.zone_geometry, zoneData]);
 
-  const { data: persistedDocument } = useQuery<Document | null>({
+  const { data: persistedDocument } = useQuery<MinimalDocument | null>({
     queryKey: ['document-artifact', resolvedDocumentId],
     queryFn: async () => {
       if (!resolvedDocumentId) return null;
@@ -288,7 +298,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         .select('id, html_content, source_plu_url, typology_id')
         .eq('id', resolvedDocumentId)
         .maybeSingle();
-      return data;
+      return (data as MinimalDocument) ?? null;
     },
     enabled: !!resolvedDocumentId && !enrichment.data.documentData?.htmlContent,
   });
@@ -437,13 +447,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           data: documentData,
           renderingStatus: 'pending',
         });
-        
-        // Step 2: Switch to document tab immediately when document ID is found (show skeleton)
-        if (isPanelOpen && artifactActiveTab === 'map' && 
-            conversation?.enrichment_status !== 'completed') {
-          console.log('[CHAT_PAGE] Step 2: Switching to document tab (showing skeleton)');
-          setArtifactTab('document');
-        }
       } else {
         const currentDocData = currentDoc.data as DocumentArtifactData | undefined;
         const metadataChanged =
@@ -507,10 +510,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     resolvedDocumentData,
     conversation,
     artifacts.document,
-    isPanelOpen,
-    artifactActiveTab,
     updateArtifactState,
-    setArtifactTab,
     cityNameFromContext,
     inseeCodeFromContext,
     conversation?.is_rnu,
@@ -519,6 +519,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   // useEffect: reset refs when conversation changes
   useEffect(() => {
     hasAutoOpenedPanelRef.current = false;
+    autoTabTriggeredRef.current = false;
     analysisMessageSavedRef.current = false;
     setAnalysisMessageTextComplete({});
     setShowFinalAnalysisMessage(false);
@@ -530,6 +531,20 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       queryClient.invalidateQueries({ queryKey: ['conversation', params.conversation_id] });
     }
   }, [enrichment.status, queryClient, params.conversation_id]);
+
+  useEffect(() => {
+    const documentArtifact = artifacts.document;
+    if (
+      documentArtifact &&
+      documentArtifact.status === 'ready' &&
+      documentArtifact.renderingStatus === 'complete' &&
+      artifactActiveTab !== 'document' &&
+      !autoTabTriggeredRef.current
+    ) {
+      autoTabTriggeredRef.current = true;
+      setArtifactTab('document');
+    }
+  }, [artifacts.document, artifactActiveTab, setArtifactTab]);
 
   // useEffect: UI state transition (enrichment completion)
   useEffect(() => {
@@ -1049,7 +1064,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
       {/* Breadcrumb header */}
       {showBreadcrumb && conversation && (
         <ConversationBreadcrumb
-          project={project}
+          project={resolvedProject}
           conversation={conversation}
         />
       )}

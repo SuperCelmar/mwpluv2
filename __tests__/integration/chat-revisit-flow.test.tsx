@@ -24,13 +24,24 @@ vi.mock('@/app/(app)/chat/[conversation_id]/useEnrichment', () => ({
   useEnrichment: (...args: any[]) => mockUseEnrichment(...(args as [])),
 }));
 
+let rightPanelProps: any = null;
+
 vi.mock('@/components/ChatRightPanel', () => ({
-  ChatRightPanel: () => <div data-testid="right-panel" />,
+  ChatRightPanel: (props: any) => {
+    rightPanelProps = props;
+    return <div data-testid="right-panel" />;
+  },
 }));
 
 vi.mock('@/components/ui/ai-prompt-box', () => ({
   PromptInputBox: () => <div data-testid="prompt-input-box" />,
 }));
+
+beforeAll(() => {
+  if (!window.HTMLElement.prototype.scrollTo) {
+    window.HTMLElement.prototype.scrollTo = () => {};
+  }
+});
 
 describe('ChatConversationPage revisit flow', () => {
   beforeEach(() => {
@@ -52,6 +63,7 @@ describe('ChatConversationPage revisit flow', () => {
       },
       data: {},
     });
+    rightPanelProps = null;
   });
 
   function renderConversationPage() {
@@ -155,6 +167,36 @@ describe('ChatConversationPage revisit flow', () => {
     });
 
     expect(screen.queryByText('Vérification de la zone concernée...')).toBeNull();
+  });
+
+  it('hydrates right panel tab from persisted metadata', async () => {
+    const completedConversation = createMockV2Conversation({
+      id: 'conversation-revisit',
+      project_id: 'project-123',
+      enrichment_status: 'completed',
+      branch_type: 'non_rnu_analysis',
+      has_analysis: true,
+      primary_document_id: 'doc-ua1',
+      document_metadata: {
+        branch_type: 'non_rnu_analysis',
+        panel_state: {
+          active_tab: 'document',
+        },
+        artifacts: {
+          document: { status: 'ready' },
+        },
+      },
+    });
+
+    server.use(
+      http.get('*/rest/v1/v2_conversations', () => HttpResponse.json([completedConversation])),
+      http.get('*/rest/v1/v2_messages', () => HttpResponse.json([])),
+      http.get('*/rest/v1/v2_research_history', () => HttpResponse.json([]))
+    );
+
+    renderConversationPage();
+
+    await waitFor(() => expect(rightPanelProps?.activeTab).toBe('document'));
   });
 });
 

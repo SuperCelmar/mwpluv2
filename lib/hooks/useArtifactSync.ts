@@ -1,7 +1,16 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useArtifactStore, type ArtifactState } from '@/lib/stores/artifactStore';
+import { supabase } from '@/lib/supabase';
+import {
+  mergePanelStateMetadata,
+  resolvePanelState,
+} from '@/lib/utils/branchMetadata';
+
+interface UseArtifactSyncOptions {
+  initialMetadata?: Record<string, any> | null;
+}
 import type { ZoneArtifactData, MapArtifactData, DocumentArtifactData } from '@/types/artifacts';
 
 /**
@@ -78,7 +87,10 @@ export interface UseArtifactSyncReturn {
  * setRightPanelOpen(true);
  * ```
  */
-export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
+export function useArtifactSync(
+  conversationId: string,
+  options: UseArtifactSyncOptions = {}
+): UseArtifactSyncReturn {
   // Initialize conversation on mount
   const initializeConversation = useArtifactStore(
     (state) => state.initializeConversation
@@ -88,12 +100,36 @@ export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
   const resetConversation = useArtifactStore((state) => state.resetConversation);
   const getConversationState = useArtifactStore((state) => state.getConversationState);
 
+  const [metadataSnapshot, setMetadataSnapshot] = useState<Record<string, any> | null>(
+    options.initialMetadata ?? null
+  );
+  const metadataSignatureRef = useRef<string | null>(null);
+  const lastPersistedSignatureRef = useRef<string | null>(null);
+  const initialTabAppliedRef = useRef(false);
+
+  const normalizedMetadata = options.initialMetadata ?? null;
+
+  // Track metadata changes from caller and refresh snapshot when it updates
+  useEffect(() => {
+    const serialized = normalizedMetadata ? JSON.stringify(normalizedMetadata) : null;
+    if (metadataSignatureRef.current === serialized) {
+      return;
+    }
+    metadataSignatureRef.current = serialized;
+    setMetadataSnapshot(normalizedMetadata);
+    initialTabAppliedRef.current = false;
+  }, [normalizedMetadata]);
+
+  const resolvedInitialTab = useMemo(() => {
+    return resolvePanelState(metadataSnapshot).activeTab;
+  }, [metadataSnapshot]);
+
   // Initialize conversation state on mount
   useEffect(() => {
     if (conversationId) {
-      initializeConversation(conversationId);
+      initializeConversation(conversationId, resolvedInitialTab);
     }
-  }, [conversationId, initializeConversation]);
+  }, [conversationId, initializeConversation, resolvedInitialTab]);
 
   // Subscribe to conversation state
   const conversationState = useArtifactStore((state) =>
@@ -106,7 +142,12 @@ export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
     map: null,
     document: null,
   };
-  const activeTab = conversationState?.activeTab ?? 'map';
+
+  const activeTab =
+    conversationState && initialTabAppliedRef.current
+      ? conversationState.activeTab
+      : resolvedInitialTab ?? 'map';
+
 
   // Wrapped update method that includes conversationId
   const handleUpdateArtifact = useCallback(
@@ -139,8 +180,8 @@ export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
   const handleResetArtifacts = useCallback(() => {
     resetConversation(conversationId);
     // Re-initialize after reset
-    initializeConversation(conversationId);
-  }, [conversationId, resetConversation, initializeConversation]);
+    initializeConversation(conversationId, resolvedInitialTab);
+  }, [conversationId, resetConversation, initializeConversation, resolvedInitialTab]);
 
   // Check if artifact is fully rendered
   const handleIsArtifactRendered = useCallback(
@@ -166,6 +207,97 @@ export function useArtifactSync(conversationId: string): UseArtifactSyncReturn {
     },
     [artifacts]
   );
+
+  // Apply initial panel tab from metadata only once per conversation
+  useEffect(() => {
+    if (!conversationId || !conversationState) {
+      return;
+    }
+
+    if (initialTabAppliedRef.current) {
+      return;
+    }
+
+    if (conversationState.activeTab !== resolvedInitialTab) {
+      handleSetActiveTab(resolvedInitialTab);
+    }
+    initialTabAppliedRef.current = true;
+  }, [conversationId, conversationState, resolvedInitialTab, handleSetActiveTab]);
+
+  // Persist panel state + artifact readiness to Supabase
+  useEffect(() => {
+    if (!conversationId || !initialTabAppliedRef.current) {
+      return;
+    }
+
+    const artifactUpdates: Record<string, any> = {};
+    let hasArtifactUpdates = false;
+
+    if (artifacts.map) {
+      const prevMap = metadataSnapshot?.artifacts?.map;
+      if (
+        artifacts.map.status !== prevMap?.status ||
+        artifacts.map.renderingStatus !== prevMap?.rendering_status
+      ) {
+        artifactUpdates.map = {
+          status: artifacts.map.status,
+          rendering_status: artifacts.map.renderingStatus,
+        };
+        hasArtifactUpdates = true;
+      }
+    }
+
+    if (artifacts.document) {
+      const prevDoc = metadataSnapshot?.artifacts?.document;
+      if (
+        artifacts.document.status !== prevDoc?.status ||
+        artifacts.document.renderingStatus !== prevDoc?.rendering_status
+      ) {
+        artifactUpdates.document = {
+          status: artifacts.document.status,
+          rendering_status: artifacts.document.renderingStatus,
+        };
+        hasArtifactUpdates = true;
+      }
+    }
+
+    const shouldUpdateTab =
+      metadataSnapshot?.panel_state?.active_tab !== activeTab;
+
+    if (!shouldUpdateTab && !hasArtifactUpdates) {
+      return;
+    }
+
+    const nextMetadata = mergePanelStateMetadata(metadataSnapshot, {
+      activeTab: shouldUpdateTab ? activeTab : undefined,
+      artifacts: hasArtifactUpdates ? artifactUpdates : undefined,
+    });
+
+    const serialized = JSON.stringify(nextMetadata);
+    if (serialized === lastPersistedSignatureRef.current) {
+      return;
+    }
+
+    lastPersistedSignatureRef.current = serialized;
+
+    (async () => {
+      const { error } = await supabase
+        .from('v2_conversations')
+        .update({ document_metadata: nextMetadata })
+        .eq('id', conversationId);
+
+      if (error) {
+        console.error('[ARTIFACT_SYNC] Failed to persist panel state', error);
+        lastPersistedSignatureRef.current = null;
+      }
+    })();
+  }, [
+    conversationId,
+    artifacts.map,
+    artifacts.document,
+    activeTab,
+    metadataSnapshot,
+  ]);
 
   return {
     artifacts,

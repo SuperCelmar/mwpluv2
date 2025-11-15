@@ -8,6 +8,8 @@ import { InlineArtifactCard } from '@/components/InlineArtifactCard';
 import { TextGenerateEffect } from '@/components/ui/text-generate-effect';
 import type { UseEnrichmentReturn } from '@/app/(app)/chat/[conversation_id]/useEnrichment';
 import type { DocumentArtifactData } from '@/types/artifacts';
+import { getFinalAssistantCopy } from '@/lib/utils/branchMetadata';
+import type { ConversationBranch } from '@/types/enrichment';
 
 interface AnalysisFoundMessageProps {
   enrichment: UseEnrichmentReturn;
@@ -59,6 +61,14 @@ export function AnalysisFoundMessage({
   const documentData = enrichment.data.documentData;
   const hasDocument = documentData && documentData.documentId;
   const hasMap = enrichment.data.mapGeometry !== null && enrichment.data.mapGeometry !== undefined;
+
+  const branchType: ConversationBranch =
+    (enrichment.data?.branchType as ConversationBranch) ||
+    (documentData?.hasAnalysis ? 'non_rnu_analysis' : 'non_rnu_source');
+  const finalCopy = getFinalAssistantCopy({
+    branchType,
+    zoneName,
+  });
 
   // Determine artifact status
   const documentStatus: 'loading' | 'ready' | 'error' = 
@@ -127,15 +137,18 @@ export function AnalysisFoundMessage({
           )}
         >
           <div className="text-sm sm:text-[15px] leading-relaxed">
-            <TextGenerateEffect
-              words={zoneName 
-                ? `Voici l'analyse concernant la zone ${zoneName}:`
-                : 'Voici l\'analyse concernant cette zone:'}
-              className="font-normal text-sm sm:text-[15px] no-margin"
-              filter={true}
-              duration={0.5}
-              onComplete={handleTextGenerationComplete}
-            />
+            <div className="space-y-2">
+              <TextGenerateEffect
+                words={finalCopy.title}
+                className="font-normal text-sm sm:text-[15px] no-margin"
+                filter={true}
+                duration={0.5}
+                onComplete={handleTextGenerationComplete}
+              />
+              {finalCopy.description && (
+                <p className="text-xs text-gray-600">{finalCopy.description}</p>
+              )}
+            </div>
           </div>
         </div>
 

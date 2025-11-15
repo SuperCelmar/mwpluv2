@@ -1,5 +1,22 @@
 # Changelog
 
+## 2025-11-15 - Step 6 Loading & Artifacts
+
+### Added
+- **Branch messaging helpers** (`lib/utils/branchMetadata.ts`) now expose `getBranchLoadingMessages`, `getFinalAssistantCopy`, `resolvePanelState`, and `mergePanelStateMetadata` so loading copy, final assistant card, and panel persistence all share a single source of truth.
+- **Document source UX** in `components/chat/artifacts/DocumentCard.tsx` renders the PLU fallback copy with a CTA when no analysis exists, and `components/InlineArtifactCard.tsx` reflects whether the document is an analysis or a source.
+- **Right-panel persistence** by extending `useArtifactSync` and the artifact store to hydrate the active tab from Supabase metadata, auto-switch when the document artifact renders, and patch the conversation row with the latest panel/artifact state.
+
+### Changed
+- **LoadingAssistantMessage** now derives its copy purely from branch metadata, skipping the analysis step for RNU/source flows while keeping the three-step script for analysis branches.
+- **AnalysisFoundMessage** uses the new helper copy, surfaces the doc-source description, and retains the staged inline cards.
+- **Chat conversation page** passes persisted metadata into `useArtifactSync`, only auto-tabs when artifacts are ready, and disables premature metadata rewrites so revisits can resume on the saved tab.
+- **Map/document artifacts** (`components/chat/artifacts/*.tsx`, `components/MapArtifact.tsx`) and inline cards now wait for rendering callbacks before flagging artifacts complete, ensuring the loading message and final assistant bubble respect artifact readiness.
+
+### Tests
+- Added/updated suites: `__tests__/components/loading-assistant-message.test.tsx`, `__tests__/components/analysis-found-message.test.tsx`, `__tests__/integration/chat-revisit-flow.test.tsx`, `__tests__/utils/branch-metadata.test.ts`.
+- Command: `npm run test -- __tests__/components/loading-assistant-message.test.tsx __tests__/components/analysis-found-message.test.tsx __tests__/integration/chat-revisit-flow.test.tsx __tests__/utils/branch-metadata.test.ts`
+
 ## 2025-11-15 - Duplicate Prefetch & Revisit UX
 
 ### Added
