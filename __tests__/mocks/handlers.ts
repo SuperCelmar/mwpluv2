@@ -323,6 +323,11 @@ Votre demande porte-t-elle sur une construction neuve, une extension, ou une ré
     const body = await request.json() as any;
     const newConversation = {
       ...body,
+      branch_type: body.branch_type || 'pending',
+      has_analysis: body.has_analysis ?? false,
+      is_rnu: body.is_rnu ?? false,
+      primary_document_id: body.primary_document_id || null,
+      document_metadata: body.document_metadata || null,
       id: `conversation-${v2ConversationIdCounter++}`,
       is_active: body.is_active !== undefined ? body.is_active : true,
       message_count: body.message_count || 0,
@@ -444,6 +449,11 @@ Votre demande porte-t-elle sur une construction neuve, une extension, ou une ré
     const body = await request.json() as any;
     const newEntry = {
       ...body,
+      branch_type: body.branch_type || 'pending',
+      has_analysis: body.has_analysis ?? false,
+      is_rnu: body.is_rnu ?? false,
+      primary_document_id: body.primary_document_id || null,
+      document_metadata: body.document_metadata || null,
       id: `research-${researchIdCounter++}`,
       created_at: new Date().toISOString(),
     };

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
   useParams: vi.fn(),
@@ -95,11 +96,16 @@ describe('ChatConversationPage branch-driven states', () => {
   });
 
   function renderPage() {
-    render(<ChatConversationPage params={{ conversation_id: 'conversation-branch' }} />);
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatConversationPage params={{ conversation_id: 'conversation-branch' }} />
+      </QueryClientProvider>
+    );
   }
 
   it('keeps chat enabled for RNU branch', async () => {
-    mockUseEnrichment.mockReturnValueOnce(buildEnrichmentBranch('rnu'));
+    mockUseEnrichment.mockReturnValue(buildEnrichmentBranch('rnu'));
 
     renderPage();
 
@@ -109,7 +115,7 @@ describe('ChatConversationPage branch-driven states', () => {
   });
 
   it('disables chat input with tooltip when only source document exists', async () => {
-    mockUseEnrichment.mockReturnValueOnce(buildEnrichmentBranch('non_rnu_source'));
+    mockUseEnrichment.mockReturnValue(buildEnrichmentBranch('non_rnu_source'));
 
     renderPage();
 
@@ -119,7 +125,7 @@ describe('ChatConversationPage branch-driven states', () => {
   });
 
   it('enables chat input when analysis is available', async () => {
-    mockUseEnrichment.mockReturnValueOnce(buildEnrichmentBranch('non_rnu_analysis'));
+    mockUseEnrichment.mockReturnValue(buildEnrichmentBranch('non_rnu_analysis'));
 
     renderPage();
 

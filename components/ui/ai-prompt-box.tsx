@@ -461,6 +461,8 @@ interface PromptInputBoxProps {
   placeholder?: string;
   className?: string;
   conversationStarted?: boolean;
+  disabled?: boolean;
+  disabledTooltip?: string;
   // Address autocomplete props
   enableAddressAutocomplete?: boolean;
   onAddressSelect?: (address: any) => void;
@@ -476,6 +478,8 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
     placeholder = "Type your message here...", 
     className,
     conversationStarted = false,
+    disabled = false,
+    disabledTooltip,
     enableAddressAutocomplete = false,
     onAddressSelect,
     addressSuggestions = [],
@@ -503,6 +507,7 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
   const isDarkMode = mounted && resolvedTheme === 'dark';
 
   const handleToggleChange = (value: string) => {
+    if (computedDisabled) return;
     if (value === "search") {
       setShowSearch((prev) => !prev);
       setShowThink(false);
@@ -512,12 +517,16 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
     }
   };
 
-  const handleCanvasToggle = () => setShowCanvas((prev) => !prev);
+  const handleCanvasToggle = () => {
+    if (computedDisabled) return;
+    setShowCanvas((prev) => !prev);
+  };
 
   const isImageFile = (file: File) => file.type.startsWith("image/");
+  const computedDisabled = disabled || isLoading || isRecording;
 
   const processFile = (file: File) => {
-    if (!isImageFile(file)) {
+    if (computedDisabled || !isImageFile(file)) {
       console.log("Only image files are allowed");
       return;
     }
@@ -592,6 +601,9 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
   };
 
   const handleSubmit = () => {
+    if (computedDisabled) {
+      return;
+    }
     if (input.trim() || files.length > 0) {
       let messagePrefix = "";
       if (showSearch) messagePrefix = "[Search: ";
@@ -639,10 +651,11 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
         onSubmit={handleSubmit}
         className={cn(
           "w-full bg-card border-border shadow-lg transition-all duration-300 ease-in-out",
+          (isRecording || computedDisabled) && "opacity-80",
           isRecording && "border-destructive/70",
           className
         )}
-        disabled={isLoading || isRecording}
+        disabled={computedDisabled}
         ref={ref || promptBoxRef}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -713,11 +726,14 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
               isRecording ? "opacity-0 invisible h-0" : "opacity-100 visible"
             )}
           >
-            <PromptInputAction tooltip="Upload image">
+            <PromptInputAction tooltip={disabled && disabledTooltip ? disabledTooltip : "Upload image"}>
               <button
-                onClick={() => uploadInputRef.current?.click()}
+                onClick={() => {
+                  if (computedDisabled) return;
+                  uploadInputRef.current?.click();
+                }}
                 className="flex h-8 w-8 text-muted-foreground cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-accent hover:text-foreground"
-                disabled={isRecording}
+                disabled={computedDisabled}
               >
                 <Paperclip className="h-5 w-5 transition-colors" />
                 <input
@@ -743,6 +759,7 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
                     ? "bg-[#1EAEDB]/15 border-[#1EAEDB] text-[#1EAEDB]"
                     : "bg-transparent border-transparent text-muted-foreground hover:text-foreground"
                 )}
+                disabled={computedDisabled}
               >
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                   <motion.div
@@ -779,6 +796,7 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
                     ? "bg-[#8B5CF6]/15 border-[#8B5CF6] text-[#8B5CF6]"
                     : "bg-transparent border-transparent text-muted-foreground hover:text-foreground"
                 )}
+                disabled={computedDisabled}
               >
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                   <motion.div
@@ -815,6 +833,7 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
                     ? "bg-[#F97316]/15 border-[#F97316] text-[#F97316]"
                     : "bg-transparent border-transparent text-muted-foreground hover:text-foreground"
                 )}
+                disabled={computedDisabled}
               >
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                   <motion.div
@@ -844,7 +863,9 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
 
           <PromptInputAction
             tooltip={
-              isLoading
+              disabled && disabledTooltip
+                ? disabledTooltip
+                : isLoading
                 ? "Stop generation"
                 : isRecording
                 ? "Stop recording"
@@ -865,11 +886,15 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
                   : "bg-transparent hover:bg-accent text-muted-foreground hover:text-foreground"
               )}
               onClick={() => {
+                if (disabled && !isRecording) {
+                  return;
+                }
                 if (isRecording) setIsRecording(false);
                 else if (hasContent) handleSubmit();
                 else setIsRecording(true);
               }}
-              disabled={isLoading && !hasContent}
+              disabled={(disabled && !isRecording) || (isLoading && !hasContent)}
+              title={disabled && disabledTooltip ? disabledTooltip : undefined}
             >
               {isLoading ? (
                 <Square className="h-4 w-4 fill-primary-foreground animate-pulse" />

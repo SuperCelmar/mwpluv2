@@ -168,6 +168,11 @@ export type V2Conversation = {
   title: string | null;
   context_metadata: any | null;  // Stores initial address, geocoding, etc.
   enrichment_status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  branch_type: 'pending' | 'rnu' | 'non_rnu_analysis' | 'non_rnu_source';
+  has_analysis: boolean;
+  is_rnu: boolean;
+  primary_document_id: string | null;
+  document_metadata: any | null;
   is_active: boolean;
   archived_at: string | null;
   last_message_at: string | null;
@@ -236,6 +241,11 @@ export type V2ResearchHistory = {
   geo_lon: number | null;
   geo_lat: number | null;
   documents_found: string[] | null;  // UUID array
+  branch_type: 'pending' | 'rnu' | 'non_rnu_analysis' | 'non_rnu_source';
+  has_analysis: boolean;
+  is_rnu: boolean;
+  primary_document_id: string | null;
+  document_metadata: any | null;
   success: boolean;
   error_reason: string | null;
   created_at: string;

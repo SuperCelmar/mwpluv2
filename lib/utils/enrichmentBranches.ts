@@ -6,5 +6,13 @@ interface BranchParams {
 }
 
 export function determineConversationBranch({ isRnu, hasAnalysis }: BranchParams): ConversationBranch {
-  throw new Error('determineConversationBranch not implemented yet');
+  if (isRnu) {
+    return 'rnu';
+  }
+
+  if (hasAnalysis) {
+    return 'non_rnu_analysis';
+  }
+
+  return 'non_rnu_source';
 }

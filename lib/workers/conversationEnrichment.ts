@@ -28,6 +28,7 @@ export interface EnrichmentResult {
     htmlContent: string | null;
     documentId: string | null;
     hasAnalysis: boolean;
+    sourceUrl: string | null;
   } | null;
   mapGeometry: any | null;
   branchType: ConversationBranch | null;
@@ -380,6 +381,7 @@ export async function enrichConversation(
                 htmlContent: document.html_content || null,
                 documentId: document.id,
                 hasAnalysis: true,
+                sourceUrl: document.source_plu_url || null,
               };
               result.branchType = isRnu ? 'rnu' : 'non_rnu_analysis';
               result.operationTimes.document = Date.now() - opStart;
@@ -414,6 +416,7 @@ export async function enrichConversation(
                     htmlContent: null,
                     documentId: newDocument.id,
                     hasAnalysis: false,
+                    sourceUrl: sourcePluUrl,
                   };
                   result.branchType = isRnu ? 'rnu' : 'non_rnu_source';
                 }
@@ -486,14 +489,29 @@ export async function enrichConversation(
     console.log('[ENRICHMENT_WORKER] Updating database with enriched data');
 
     // Update research_history
-    if (researchId && (result.cityId || result.zoneId)) {
+    if (researchId) {
+      const researchUpdate: Record<string, any> = {
+        geocoded_address: municipality?.properties?.name?.toLowerCase() || communeName,
+        branch_type: result.branchType,
+        has_analysis: result.documentData?.hasAnalysis || false,
+        is_rnu: isRnu,
+        primary_document_id: result.documentData?.documentId || null,
+        document_metadata: documentMetadataPayload,
+      };
+
+      if (result.cityId) {
+        researchUpdate.city_id = result.cityId;
+      }
+      if (result.zoneId) {
+        researchUpdate.zone_id = result.zoneId;
+      }
+      if (result.documentData?.documentId) {
+        researchUpdate.documents_found = [result.documentData.documentId];
+      }
+
       await supabase
         .from('v2_research_history')
-        .update({
-          city_id: result.cityId,
-          zone_id: result.zoneId,
-          geocoded_address: municipality?.properties?.name?.toLowerCase() || communeName,
-        })
+        .update(researchUpdate)
         .eq('id', researchId);
     }
 
@@ -522,11 +540,28 @@ export async function enrichConversation(
       },
     };
 
+    const documentMetadataPayload = result.documentData
+      ? {
+          document_id: result.documentData.documentId,
+          zone_code: zoneCode,
+          zone_name: zoneName,
+          city_name: municipality?.properties?.name || communeName || null,
+          source_plu_url: result.documentData.sourceUrl,
+          map_geometry_available: !!result.mapGeometry,
+          enriched_at: new Date().toISOString(),
+        }
+      : null;
+
     await supabase
       .from('v2_conversations')
       .update({
         context_metadata: updatedMetadata,
         enrichment_status: 'completed',
+        branch_type: result.branchType,
+        has_analysis: result.documentData?.hasAnalysis || false,
+        is_rnu: isRnu,
+        primary_document_id: result.documentData?.documentId || null,
+        document_metadata: documentMetadataPayload,
       })
       .eq('id', conversationId);
 

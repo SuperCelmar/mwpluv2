@@ -21,6 +21,8 @@ import { InlineArtifactCard } from '@/components/InlineArtifactCard';
 import { getArtifactId } from '@/lib/utils/artifactDetection';
 import type { MapArtifactData, DocumentArtifactData } from '@/types/artifacts';
 import { toast } from '@/hooks/use-toast';
+import type { ConversationBranch } from '@/types/enrichment';
+import { determineConversationBranch } from '@/lib/utils/enrichmentBranches';
 
 export default function ChatConversationPage({ params }: { params: { conversation_id: string } }) {
   const router = useRouter();
@@ -773,6 +775,41 @@ export default function ChatConversationPage({ params }: { params: { conversatio
 
   const conversationStarted = !!conversation;
 
+  const enrichmentBranch = (enrichment.data.branchType as ConversationBranch | undefined) || null;
+  const persistedBranch =
+    conversation &&
+    conversation.branch_type &&
+    conversation.branch_type !== 'pending'
+      ? (conversation.branch_type as ConversationBranch)
+      : null;
+  const researchBranch =
+    researchContext &&
+    researchContext.branch_type &&
+    researchContext.branch_type !== 'pending'
+      ? (researchContext.branch_type as ConversationBranch)
+      : null;
+
+  const hasStableFlags =
+    !!(
+      (conversation && (conversation.has_analysis || conversation.is_rnu)) ||
+      (researchContext && (researchContext.has_analysis || researchContext.is_rnu))
+    );
+
+  const fallbackBranch: ConversationBranch | null = hasStableFlags
+    ? determineConversationBranch({
+        isRnu: conversation?.is_rnu ?? researchContext?.is_rnu ?? false,
+        hasAnalysis: conversation?.has_analysis ?? researchContext?.has_analysis ?? false,
+      })
+    : null;
+
+  const resolvedBranch: ConversationBranch | null =
+    enrichmentBranch || persistedBranch || researchBranch || fallbackBranch;
+
+  const chatInputDisabled = resolvedBranch === 'non_rnu_source';
+  const chatDisabledTooltip = chatInputDisabled
+    ? 'Impossible de discuter avec ce document.'
+    : undefined;
+
   const handleRename = () => {
     setShowRenameDialog(true);
   };
@@ -969,6 +1006,8 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                 isLoading={sendingMessage}
                 placeholder="Posez votre question..."
                 conversationStarted={conversationStarted}
+          disabled={chatInputDisabled}
+          disabledTooltip={chatDisabledTooltip}
               />
             </div>
           </div>

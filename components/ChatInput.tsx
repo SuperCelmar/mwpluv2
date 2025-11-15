@@ -9,12 +9,14 @@ import { cn } from '@/lib/utils';
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  disabledTooltip?: string;
   placeholder?: string;
 }
 
 export function ChatInput({ 
   onSend, 
   disabled, 
+  disabledTooltip,
   placeholder = 'Quelle est la hauteur maximale autorisée ? Puis-je construire un garage ?' 
 }: ChatInputProps) {
   const [input, setInput] = useState('');
@@ -75,6 +77,7 @@ export function ChatInput({
           type="submit" 
           size="icon" 
           disabled={disabled || !input.trim()} 
+          title={disabled && disabledTooltip ? disabledTooltip : undefined}
           className={cn(
             "h-7 w-7 sm:h-9 sm:w-9 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90",
             "disabled:opacity-40 disabled:cursor-not-allowed",

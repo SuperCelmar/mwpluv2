@@ -37,8 +37,18 @@ export async function createLightweightConversation(
         },
         city: city || null,
         insee_code: inseeCode || null,
+        enrichment: {
+          branch_type: 'pending',
+          has_analysis: false,
+          is_rnu: false,
+        },
       },
       enrichment_status: 'pending',
+      branch_type: 'pending',
+      has_analysis: false,
+      is_rnu: false,
+      primary_document_id: null,
+      document_metadata: null,
       is_active: true,
     })
     .select('id')
@@ -98,6 +108,11 @@ export async function createInitialResearchHistoryEntry({
       address_input: addressInput,
       geo_lon: coordinates.lon,
       geo_lat: coordinates.lat,
+      branch_type: 'pending',
+      has_analysis: false,
+      is_rnu: false,
+      primary_document_id: null,
+      document_metadata: null,
       success: true,
     });
 

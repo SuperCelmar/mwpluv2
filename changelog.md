@@ -1,5 +1,21 @@
 # Changelog
 
+## 2025-11-15 - Schema Helpers & Conversation Metadata
+
+### Added
+- **Supabase migrations** `20251215000001_add_branch_metadata_to_conversations.sql` and `20251215000002_add_branch_metadata_to_research_history.sql` to persist `branch_type`, `has_analysis`, `is_rnu`, `primary_document_id`, and `document_metadata`.
+- **Vitest coverage** for `lib/supabase/queries.ts` ensuring both the lightweight conversation insert and the initial research history entry write the new metadata defaults.
+
+### Changed
+- **Supabase helpers** (`lib/supabase/queries.ts`, `lib/supabase.ts`) now seed the new metadata fields at address selection time and expose the richer column types.
+- **Conversation enrichment worker** (`lib/workers/conversationEnrichment.ts`) updates both conversations and research history with branch status, analysis flags, primary document links, and structured document metadata.
+- **Frontend chat flow** (`app/(app)/chat/[conversation_id]/page.tsx`, `components/ui/ai-prompt-box.tsx`, `components/ChatInput.tsx`) consumes the metadata to gate the chat input, surface the French tooltip, and keep the prompt UI consistent when a conversation is read-only.
+- **Tests & mocks** (`__tests__/integration/chat-branch-state.test.tsx`, `__tests__/lib/supabase/queries.test.ts`, `__tests__/mocks/handlers.ts`, `__tests__/utils/test-helpers.ts`) were refreshed to understand the new columns and to wrap ChatConversationPage in a `QueryClientProvider`.
+
+### Tests
+- `npx vitest run __tests__/lib/supabase/queries.test.ts __tests__/integration/chat-branch-state.test.tsx __tests__/components/chat-input.test.tsx`
+- Full `npm run test` still fails on `__tests__/integration/create-project.test.tsx` (pre-existing duplicate-hint expectation) plus MSW profile lookups; no new regressions were introduced by this change set.
+
 ## 2025-01-13 - Fixed Navigation Buttons in ChatLeftSidebar
 
 ### Fixed
