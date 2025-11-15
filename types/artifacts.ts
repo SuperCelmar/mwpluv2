@@ -31,8 +31,11 @@ export interface ZoneArtifactData {
 
 // Map artifact data
 export interface MapArtifactData {
-  geometry: {
-    type: 'MultiPolygon' | 'Polygon';
+  geometry?: {
+    type: 'MultiPolygon';
+    coordinates: number[][][][];
+  } | {
+    type: 'Polygon';
     coordinates: number[][][];
   };
   bbox?: [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]

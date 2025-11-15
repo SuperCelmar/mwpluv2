@@ -48,6 +48,16 @@ export function useEnrichment(
   const enrichmentInProgressRef = useRef(false);
   const retryKeyRef = useRef(0);
 
+  const mergeEnrichmentData = useCallback((updates: Partial<EnrichmentResult>) => {
+    if (!updates || Object.keys(updates).length === 0) {
+      return;
+    }
+    setEnrichmentData((prev) => ({
+      ...prev,
+      ...updates,
+    }));
+  }, []);
+
   // Check if enrichment is needed
   const needsEnrichment = useCallback(() => {
     if (!conversationData) return false;
@@ -77,10 +87,14 @@ export function useEnrichment(
         setOverallStatus('enriching');
         
         try {
-          const result = await enrichConversation(conversationId);
+          const result = await enrichConversation(conversationId, {
+            onProgress: (partial) => {
+              mergeEnrichmentData(partial);
+            },
+          });
           
           // Update data as enrichment completes
-          setEnrichmentData({
+          mergeEnrichmentData({
             cityId: result.cityId,
             zoneId: result.zoneId,
             zoningId: result.zoningId,
@@ -110,7 +124,7 @@ export function useEnrichment(
         }
       },
     };
-  }, [conversationId]);
+  }, [conversationId, mergeEnrichmentData]);
 
   // Use progressive loading to track enrichment
   const { status: loaderStatus, errors: loaderErrors, data: loaderData, refresh } = useProgressiveLoading(
@@ -192,7 +206,7 @@ export function useEnrichment(
   useEffect(() => {
     if (loaderData.enrichment) {
       const result = loaderData.enrichment as EnrichmentResult;
-      setEnrichmentData({
+      mergeEnrichmentData({
         cityId: result.cityId,
         zoneId: result.zoneId,
         zoningId: result.zoningId,
@@ -203,7 +217,7 @@ export function useEnrichment(
         operationTimes: result.operationTimes,
       });
     }
-  }, [loaderData.enrichment]);
+  }, [loaderData.enrichment, mergeEnrichmentData]);
 
   return {
     status: overallStatus,

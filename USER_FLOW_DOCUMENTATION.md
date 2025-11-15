@@ -174,11 +174,25 @@ This document provides a comprehensive guide to the user experience and technica
 
 ### User Experience
 
-- Loading message appears: "Vérification de la zone concernée..."
-- Right panel slides in showing map with address marker
-- Progress updates as data loads
+The chat experience now follows the seven-step progressive plan defined in `new_chat_process.md`:
+
+1. **Step 1 – Coordinates received:** the right panel auto-opens on the map tab and the LoadingAssistantMessage shows “Vérification de la zone concernée...”.
+2. **Step 2 – Map marker render:** Leaflet mounts with only the address marker; once `handleMapRenderComplete` fires, the UI waits ~2s before moving on.
+3. **Step 3 – Polygon overlay:** when `mapGeometry` arrives the polygon animates in, `buildBoundsFromPolygons` reframes the camera, and the loading copy stays in Step 1 until the overlay is visible.
+4. **Step 4 – Document lookup:** the enrichment worker queries Supabase for an existing analysis and streams progress to `useEnrichment`.
+5. **Step 5 – Document tab switch:** as soon as a document ID exists, the document tab slides into focus and Step 2 (“Récupération des documents sources...”) begins.
+6. **Step 6 – Analysis reveal:** when HTML content renders, Step 3 (“Récupération de l'analyse correspondante...”) fades out and `AnalysisFoundMessage` takes over with inline cards for both map and document.
+7. **Step 7 – Panel persistence:** the panel stays open and stage transitions are gated by render callbacks so we never advance until the artifact and message state agree.
 
 ### Technical Implementation
+
+#### 4.0 Progressive Panel Flow Reference
+
+- **Spec Source**: `new_chat_process.md` (lines 1-133) documents the seven explicit milestones and is now mirrored verbatim in code.
+- **Coordinator Effects**: `app/(app)/chat/[conversation_id]/page.tsx` (lines 98-208, 219-400, 445-484, 1013-1084) wires `useEnrichment`, `useArtifactSync`, and the panel state machine so each step flips exactly once. `handleMapRenderComplete` / `handleDocumentRenderComplete` gate the stage transitions surfaced to `LoadingAssistantMessage`.
+- **Progress Driver**: `app/(app)/chat/[conversation_id]/useEnrichment.ts` (lines 42-228) streams partial data + `progress` flags for `zones`, `municipality`, `document`, etc., which `LoadingAssistantMessage` inspects before allowing Step 2 or Step 3.
+- **Loading Script**: `components/LoadingAssistantMessage.tsx` (lines 25-214) reads both `enrichment.progress` and artifact render booleans to orchestrate the 2s / 1s delays between stages and never advances until the preceding artifact `onRenderComplete` fires.
+- **Final Reveal**: `components/AnalysisFoundMessage.tsx` (lines 19-175) animates the concluding copy and kicks off inline artifact hydration once the loading script reports completion.
 
 #### 4.1 Enrichment Hook Initialization
 
@@ -256,11 +270,12 @@ This document provides a comprehensive guide to the user experience and technica
     - Waits for zoningId (lines 283-288)
     - Calls `getOrCreateZone` (line 319)
     - Creates zone with geometry from API
-  - **Lines 332-426**: `document` operation
-    - Waits for zoneId/zoningId (lines 335-344)
-    - Queries documents table (lines 355-364)
-    - Checks for existing analysis
-    - Fetches documents from API if no analysis found (lines 387-416)
+  - **Lines 332-426**: `document` operation (Steps 4-5 from `new_chat_process.md`)
+    - Waits for zoneId/zoningId (lines 335-344) and skips entirely if neither exists to avoid noisy Supabase scans.
+    - Queries `documents` (lines 396-405) with the precise `zone_id` / `zoning_id` filters and limits to one row so we only ever hydrate a single artifact.
+    - When `html_content` or `content_json` exists (lines 411-424) it sets `result.documentData`, updates `branchType` to `non_rnu_analysis`, and streams partial progress so the document tab can appear immediately.
+    - If nothing is found and the branch is non-RNU (lines 436-475) it calls `fetchDocument` just once to seed a placeholder record, marks `branchType` as `non_rnu_source`, and still surfaces a `documentId` for UI Step 2.
+    - Falls back to `rnu`/`non_rnu_source` when no analysis exists so the downstream UI knows whether Step 3 (analysis copy) should play.
   - **Lines 428-463**: `map` operation
     - Extracts zone geometry from API response (lines 432-435)
     - Falls back to database if needed (lines 439-451)
@@ -270,6 +285,7 @@ This document provides a comprehensive guide to the user experience and technica
 - **Lines 476-508**: Updates database with enriched data
   - **Lines 480-489**: Updates research_history with city_id, zone_id
   - **Lines 492-508**: Updates conversation context_metadata and enrichment_status
+- **Lines 9-44**: `ensureDocumentLinks` helper upserts into `v2_conversation_documents` and `v2_project_documents`, guaranteeing that any `documentId` emitted in Steps 4‑6 is linked in Supabase (matches tables observed in project `ofeyssipibktmbfebibo`).
 
 **Step 4.2.8: Geo Enrichment Helpers**
 
@@ -324,6 +340,7 @@ This document provides a comprehensive guide to the user experience and technica
   - **Lines 106-115**: Creates MapArtifactData with coordinates
   - **Lines 118-123**: Initializes map artifact if doesn't exist
   - **Lines 125-147**: Updates map artifact when geometry arrives
+  - **Lines 470-476**: `handleMapRenderComplete` toggles the artifact rendering status so Step 1 can advance only after the Leaflet marker + base tile layer finish mounting.
 
 #### 5.3 Map Artifact Store
 
@@ -369,6 +386,7 @@ This document provides a comprehensive guide to the user experience and technica
   - Displays address marker
   - Overlays zone polygon when geometry available
   - Calls `onRenderComplete` when map is rendered
+  - Waits for `mapCreated && markerRendered` before flipping `shouldRenderPolygon`, adds a pseudo-random 1‑2 s delay so the panel visibly transitions from Step 1 (marker) to Step 3 (polygon), and re-computes bounds via `buildBoundsFromPolygons` for a smooth fit.
 
 #### 5.5 Loading Message Display
 
@@ -387,6 +405,7 @@ This document provides a comprehensive guide to the user experience and technica
     - Shows "Récupération de l'analyse correspondante..."
     - Waits for document to be rendered
     - 1 second delay before fade out
+  - Reads `enrichment.progress.zones`, `.municipality`, and `.document` plus the artifact render flags to guard each transition; if Step 3 copy is not available for the branch (RNU), it reuses Step 2 messaging per `getBranchLoadingMessages`.
 
 **File**: `app/(app)/chat/[conversation_id]/page.tsx`
 
@@ -394,6 +413,11 @@ This document provides a comprehensive guide to the user experience and technica
   - Only shows when enrichment is in progress
   - Checks if address message exists
   - Checks if final analysis message not shown
+
+#### 5.6 Map Geometry Utilities & Camera Fit
+
+- **File**: `lib/utils/mapGeometry.ts` (lines 1-91) normalizes both `Polygon` and `MultiPolygon` payloads into Leaflet rings via `geometryToLeafletPolygons` and exposes `buildBoundsFromPolygons` so Step 3 can zoom out to the full zone envelope.
+- **File**: `components/MapArtifact.tsx` (lines 115-158, 193-241) consumes those helpers and only calls `onRenderComplete` once the polygon’s `add` event fires, which feeds back into `useArtifactSync` so `MapCard` status flips to `'ready'`.
 
 ---
 
@@ -413,20 +437,18 @@ This document provides a comprehensive guide to the user experience and technica
 **File**: `lib/workers/conversationEnrichment.ts`
 
 - **Lines 332-426**: `document` operation
-  - **Lines 355-364**: Queries documents table
-    - Filters by zone_id OR zoning_id
-    - Checks for html_content or content_json
-  - **Lines 370-384**: If analysis found, sets documentData
-  - **Lines 386-417**: If no analysis, fetches from API
-    - Calls `fetchDocument` API (line 389)
-    - Creates placeholder document record
+  - **Lines 396-405**: Queries the Supabase `documents` table with both `zone_id` and `zoning_id` filters (limit 1) to honor Step 4’s “DB first” rule.
+  - **Lines 411-433**: When an analysis already exists, sets `result.documentData`, bumps `branchType` to `non_rnu_analysis`, and emits progress so the document tab can render immediately.
+  - **Lines 436-475**: If no analysis exists and the municipality is not RNU, calls `fetchDocument` once to seed a placeholder record (`non_rnu_source` branch) but still returns a valid `documentId` for Step 2.
+  - **Lines 479-555**: Ensures `branchType` falls back to either `'rnu'` or `'non_rnu_source'` so downstream UI knows whether to show Step 3 copy and includes document metadata in the Supabase updates.
+- **Lines 9-44**: `ensureDocumentLinks` is invoked after success to upsert `v2_conversation_documents` / `v2_project_documents`, keeping the Supabase tables in sync with the artifacts that power Steps 5‑7.
 
 **File**: `lib/carto-api.ts`
 
 - **Lines 212-217**: `fetchDocument` function
   - Wrapper for `fetchDocuments` function
-  - Calls IGN Carto document API
-  - Returns document metadata and URLs
+  - Calls IGN Carto document API only when Supabase has no analysis for the requested zoning (Step 4 fallback)
+  - Returns document metadata and URLs so a placeholder row can be inserted
 
 - **Lines 186-207**: `fetchDocuments` function
   - Calls IGN Carto API: `https://apicarto.ign.fr/api/gpu/document`
@@ -439,9 +461,8 @@ This document provides a comprehensive guide to the user experience and technica
 
 - **Lines 152-208**: `useEffect` hook syncing document artifact
   - **Lines 153-165**: Creates DocumentArtifactData when documentId found
-  - **Lines 170-182**: Initializes document artifact
-  - **Lines 177-182**: Switches to document tab when document ID found
-  - **Lines 184-205**: Updates document artifact when HTML content arrives
+  - **Lines 170-182**: Initializes the artifact via `updateArtifactState` and immediately calls `setArtifactTab('document')` (Step 5) so the right panel animates to the document.
+  - **Lines 184-205**: Updates document artifact when HTML content arrives, which triggers Step 3 once `handleDocumentRenderComplete` (lines 478-484) flips the rendering status to `'complete'`.
 
 #### 6.3 Document Rendering
 
@@ -450,6 +471,7 @@ This document provides a comprehensive guide to the user experience and technica
 - **Lines 54-71**: Extracts document artifact state and data
 - **Lines 80-84**: Determines document tab status
 - Renders DocumentCard component
+- Uses `artifactSync.activeTab` to stay consistent with inline-card clicks and automatically opens the correct tab when Step 5 fires.
 
 **File**: `components/chat/artifacts/DocumentCard.tsx`
 
@@ -457,6 +479,7 @@ This document provides a comprehensive guide to the user experience and technica
   - **Lines 31-92**: Loading/skeleton state
   - **Lines 95-107**: Ready state renders DocumentViewer
   - Passes htmlContent to viewer
+- Calls `onRenderComplete` once the sanitized HTML is flushed to the DOM so Step 3 can fade the loading banner.
 
 **File**: `components/DocumentViewer.tsx`
 
@@ -468,6 +491,7 @@ This document provides a comprehensive guide to the user experience and technica
     - Parses HTML and applies Tailwind classes
     - Enhances typography and document structure
     - Adds visual separation to sections
+  - Serves as the authoritative trigger for Step 3 → final state transition because `LoadingAssistantMessage` waits for `isDocumentRendered === true`.
 
 ---
 
@@ -540,6 +564,7 @@ This document provides a comprehensive guide to the user experience and technica
   - Checks message metadata for artifact references
   - Gets artifact data from artifact store
   - Renders cards after text generation completes
+  - Always instantiates both the map and document inline card variants for the final analysis message so Step 6 from `new_chat_process.md` is honored even if only one artifact was interacted with previously.
 
 ---
 

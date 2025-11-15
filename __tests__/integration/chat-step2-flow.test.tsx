@@ -57,9 +57,15 @@ vi.mock('@/components/ui/ai-prompt-box', () => ({
   PromptInputBox: () => <div data-testid="prompt-input-box" />,
 }));
 
-function createEnrichmentState(branchType: ConversationBranch, overrides: Partial<UseEnrichmentReturn['data']> = {}) {
+function createEnrichmentState(
+  branchType: ConversationBranch,
+  overrides: Partial<UseEnrichmentReturn['data']> = {},
+  status: UseEnrichmentReturn['status'] = 'enriching'
+) {
+  const { documentData: documentOverrides, mapGeometry: mapGeometryOverride, ...restOverrides } = overrides;
+
   return {
-    status: 'enriching',
+    status,
     retry: vi.fn(),
     progress: {
       enrichment: 'loading',
@@ -77,9 +83,10 @@ function createEnrichmentState(branchType: ConversationBranch, overrides: Partia
         documentId: `${branchType}-doc`,
         hasAnalysis: branchType === 'non_rnu_analysis',
         htmlContent: null,
+        ...(documentOverrides || {}),
       },
-      mapGeometry: { type: 'Point', coordinates: [2.3, 48.85] },
-      ...overrides,
+      mapGeometry: mapGeometryOverride ?? { type: 'Point', coordinates: [2.3, 48.85] },
+      ...restOverrides,
     },
   } as UseEnrichmentReturn;
 }
@@ -137,7 +144,7 @@ describe('ChatConversationPage Step 2 loading flows', () => {
     renderConversationPage();
 
     await waitFor(() => {
-      expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('prompt-input-box')).toBeInTheDocument();
     });
 
     expect(screen.getByText('Vérification de la zone concernée...')).toBeInTheDocument();
@@ -157,7 +164,7 @@ describe('ChatConversationPage Step 2 loading flows', () => {
     renderConversationPage();
 
     await waitFor(() => {
-      expect(screen.queryByText(/Chargement de la conversation/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('prompt-input-box')).toBeInTheDocument();
     });
 
     expect(screen.getByText('Vérification de la zone concernée...')).toBeInTheDocument();
@@ -168,6 +175,48 @@ describe('ChatConversationPage Step 2 loading flows', () => {
 
     await waitFor(() => {
       expect(screen.getByText("Vérification de la présence d'analyse...")).toBeInTheDocument();
+    });
+  });
+
+  it('continues showing step 3 copy even after enrichment completes', async () => {
+    mockUseEnrichment.mockReturnValue(
+      createEnrichmentState(
+        'non_rnu_analysis',
+        {
+          documentData: {
+            documentId: 'doc-analysis-complete',
+            hasAnalysis: true,
+            htmlContent: '<p>Analyse prête</p>',
+          },
+        },
+        'complete'
+      )
+    );
+
+    renderConversationPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('prompt-input-box')).toBeInTheDocument();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(2100);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Vérification de la présence d'analyse...")
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Récupération de l'analyse correspondante...")
+      ).toBeInTheDocument();
     });
   });
 });

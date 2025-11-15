@@ -6,6 +6,10 @@ import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import type { ZoneArtifactData, MapArtifactData, DocumentArtifactData } from '@/types/artifacts';
+import {
+  geometryToLeafletPolygons,
+  type SupportedGeometry,
+} from '@/lib/utils/mapGeometry';
 
 // Dynamically import Leaflet components for map thumbnail
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), {
@@ -43,18 +47,6 @@ interface InlineArtifactCardProps {
   status: 'loading' | 'ready' | 'error';
   data?: ZoneArtifactData | MapArtifactData | DocumentArtifactData;
   onViewInPanel: (type: 'zone' | 'map' | 'document') => void;
-}
-
-/**
- * Convert GeoJSON coordinates to Leaflet LatLng format
- * GeoJSON uses [lon, lat] while Leaflet expects [lat, lon]
- */
-function convertGeoJSONToLeaflet(coords: any[][]): [number, number][][] {
-  if (!coords || coords.length === 0) return [];
-  
-  return coords.map(polygon => 
-    polygon.map(([lon, lat]) => [lat, lon] as [number, number])
-  );
 }
 
 // Zone Inline Card Component
@@ -219,32 +211,21 @@ function MapInlineCard({
 
   const mapData = data as MapArtifactData | undefined;
   const center = mapData?.center || { lat: 0, lon: 0 };
-  const geometry = mapData?.geometry;
+  const geometry = mapData?.geometry as SupportedGeometry | undefined;
   
   // Convert geometry for Leaflet
-  const leafletCoords = geometry && geometry.type === 'MultiPolygon' 
-    ? convertGeoJSONToLeaflet(geometry.coordinates[0] || [])
-    : [];
+  const leafletCoords = geometry ? geometryToLeafletPolygons(geometry) : [];
 
   // Calculate bounds for map thumbnail
   const getBounds = () => {
     const bounds: [number, number][] = [[center.lat, center.lon]];
     
-    if (geometry && geometry.type === 'MultiPolygon' && geometry.coordinates) {
-      // For MultiPolygon, coordinates is number[][][][]
-      // First level: array of polygons
-      for (const polygon of geometry.coordinates as any) {
-        // polygon is number[][][] (array of rings)
-        for (const ring of polygon) {
-          // ring is number[][] (array of [lon, lat] pairs)
-          for (const coord of ring) {
-            if (Array.isArray(coord) && coord.length >= 2) {
-              const [lonCoord, latCoord] = coord;
-              bounds.push([latCoord, lonCoord]);
-            }
-          }
-        }
-      }
+    if (leafletCoords.length > 0) {
+      leafletCoords.forEach((ring) => {
+        ring.forEach(([latCoord, lonCoord]) => {
+          bounds.push([latCoord, lonCoord]);
+        });
+      });
     }
     
     return bounds;

@@ -55,6 +55,10 @@ export type EnrichmentOperation =
   | 'document' 
   | 'map';
 
+export interface EnrichConversationOptions {
+  onProgress?: (partial: Partial<EnrichmentResult>, meta?: { operation?: EnrichmentOperation }) => void;
+}
+
 /**
  * Result of enrichment operation
  */
@@ -82,7 +86,8 @@ export interface EnrichmentResult {
  * @returns Promise resolving to enrichment result with all IDs and data
  */
 export async function enrichConversation(
-  conversationId: string
+  conversationId: string,
+  options?: EnrichConversationOptions
 ): Promise<EnrichmentResult> {
   const startTime = Date.now();
   console.log('[ENRICHMENT_WORKER] Starting enrichment for conversation:', conversationId);
@@ -245,6 +250,10 @@ export async function enrichConversation(
           zoneCode = firstZone.properties?.libelle || null;
           zoneName = firstZone.properties?.libelong || firstZone.properties?.libelle || null;
           zoneGeometry = firstZone.geometry || null;
+
+          if (zoneGeometry) {
+            options?.onProgress?.({ mapGeometry: zoneGeometry }, { operation: 'map' });
+          }
         } else {
           throw new Error('No zones found');
         }
@@ -412,6 +421,13 @@ export async function enrichConversation(
                 sourceUrl: document.source_plu_url || null,
               };
               result.branchType = isRnu ? 'rnu' : 'non_rnu_analysis';
+              options?.onProgress?.(
+                {
+                  documentData: result.documentData,
+                  branchType: result.branchType,
+                },
+                { operation: 'document' }
+              );
               result.operationTimes.document = Date.now() - opStart;
               return result.documentData;
             }
@@ -447,6 +463,13 @@ export async function enrichConversation(
                     sourceUrl: sourcePluUrl,
                   };
                   result.branchType = isRnu ? 'rnu' : 'non_rnu_source';
+                  options?.onProgress?.(
+                    {
+                      documentData: result.documentData,
+                      branchType: result.branchType,
+                    },
+                    { operation: 'document' }
+                  );
                 }
               }
             }
@@ -471,6 +494,7 @@ export async function enrichConversation(
           // Use zone geometry from API if available, otherwise fetch from database
           if (zoneGeometry) {
             result.mapGeometry = zoneGeometry;
+            options?.onProgress?.({ mapGeometry: zoneGeometry }, { operation: 'map' });
             result.operationTimes.map = Date.now() - opStart;
             return zoneGeometry;
           }
@@ -486,6 +510,7 @@ export async function enrichConversation(
 
             if (zoneRecord && zoneRecord.geometry) {
               result.mapGeometry = zoneRecord.geometry;
+              options?.onProgress?.({ mapGeometry: zoneRecord.geometry }, { operation: 'map' });
               result.operationTimes.map = Date.now() - opStart;
               return zoneRecord.geometry;
             }

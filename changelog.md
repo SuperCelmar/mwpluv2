@@ -34,6 +34,21 @@
 - Added/updated suites: `__tests__/components/loading-assistant-message.test.tsx`, `__tests__/components/analysis-found-message.test.tsx`, `__tests__/integration/chat-revisit-flow.test.tsx`, `__tests__/utils/branch-metadata.test.ts`.
 - Command: `npm run test -- __tests__/components/loading-assistant-message.test.tsx __tests__/components/analysis-found-message.test.tsx __tests__/integration/chat-revisit-flow.test.tsx __tests__/utils/branch-metadata.test.ts`
 
+## 2025-11-15 - Map Polygon Rendering Fix
+
+### Fixed
+- **MapArtifact overlay gating** (`components/MapArtifact.tsx`) now listens to normalized geometry for both `Polygon` and `MultiPolygon` payloads, waits for the base map + marker before toggling `shouldRenderPolygon`, and recalculates `fitBounds` via `buildBoundsFromPolygons` once the overlay renders to keep the camera centered on the full zone.
+- **Inline map thumbnail** (`components/InlineArtifactCard.tsx`) uses the same normalization helper so preview cards display polygons even when the API only returns a single-ring geometry.
+- **Artifact readiness**: rendering completion checks rely on the derived polygon list, preventing Step 2/3 transitions before the overlay is visible.
+
+### Added
+- **GeoJSON helper** `lib/utils/mapGeometry.ts` centralizes `geometryToLeafletPolygons()` plus `buildBoundsFromPolygons()` so every consumer shares the same conversion + bounds math.
+- **Unit coverage** in `__tests__/utils/map-geometry.test.ts` guards Polygon + MultiPolygon conversion along with the bounds builder to avoid regressions.
+- **Process docs** (`new_chat_process.md`) now spell out how the helper + gating logic should behave in Step 1 so future contributors understand the sequencing.
+
+### Tests
+- `npx vitest run __tests__/utils/map-geometry.test.ts`
+
 ## 2025-11-15 - Duplicate Prefetch & Revisit UX
 
 ### Added
@@ -2995,6 +3010,22 @@ Following project guidelines from `project_context.md`:
 - V1 tables remain untouched and functional (non-destructive migration preserved)
 - Both `/project/[id]` and `/chat/[conversation_id]` routes now work with v2 data
 
+# Changelog
+
+## 2025-11-15 - Map Polygon Rendering & Loading Copy Stability
+
+### Fixed
+- **Progress Streaming**: `lib/workers/conversationEnrichment.ts` now accepts an `onProgress` callback so zone geometry and document metadata are emitted as soon as they are available instead of waiting for the full enrichment result.
+- **useEnrichment Hook**: Merges incremental progress updates and keeps returning partial data (map geometry, document info, branch type) to the UI as enrichment advances.
+- **LoadingAssistantMessage Mounting**: `app/(app)/chat/[conversation_id]/page.tsx` keeps the loading assistant visible once enrichment completes so step 3 ("Récupération de l'analyse correspondante...") is still shown before the final analysis message fades in.
+
+### Added
+- **Regression Test**: `__tests__/integration/chat-step2-flow.test.tsx` now includes a scenario that asserts the step 3 copy appears even when enrichment has already reached the `complete` status.
+
+### Impact
+- The map polygon overlay is unlocked as soon as the Carto zone geometry arrives, making the second phase of Step 1 (marker + polygon) reliable again.
+- Users still see the sequential Step 2/Step 3 loading script even if enrichment finishes unusually fast, preventing abrupt jumps straight to the analysis message.
+
 ## 2025-11-02 (Late Evening)
 
 ### Completed - V2 Migration Tasks
@@ -3439,3 +3470,7 @@ Following project guidelines from `project_context.md`:
 - `__tests__/integration/load-conversation.test.tsx` now renders `ChatConversationPage` inside a `QueryClientProvider`, matching the runtime setup and unblocking React Query cache assertions.
 - IGN Carto endpoints are stubbed at the MSW layer (`__tests__/mocks/handlers.ts`), and `__tests__/integration/carto-apis.test.tsx` exercises those fixtures instead of streaming the live GeoJSON payloads, preventing the prior heap exhaustion.
 - `__tests__/integration/load-conversation.test.tsx`: Polyfilled `Element.prototype.scrollTo` via Vitest hooks so the auto-scroll effect no longer throws inside JSDOM; the suite now progresses to the real enrichment assertions (still failing pending metadata fixtures).
+
+### Documentation
+- `USER_FLOW_DOCUMENTATION.md`: Synced the background-enrichment chapter with the seven-step right-panel plan from `new_chat_process.md`, detailing how `useEnrichment`, `LoadingAssistantMessage`, `MapArtifact`, and the document artifact collaborate with Supabase tables (`v2_conversation_documents`, `v2_project_documents`) for each stage.
+- Supabase project `ofeyssipibktmbfebibo`: Reviewed the current table catalog via MCP before editing to ensure the documentation references (cities, zonings, zones, documents, v2_* junctions) reflect the live schema.

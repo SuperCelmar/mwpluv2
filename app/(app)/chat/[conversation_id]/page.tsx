@@ -1062,6 +1062,19 @@ export default function ChatConversationPage({ params }: { params: { conversatio
     ? 'Impossible de discuter avec ce document.'
     : undefined;
 
+  const conversationEnrichmentPending =
+    conversation?.enrichment_status === 'pending' ||
+    conversation?.enrichment_status === 'in_progress';
+
+  const shouldShowLoadingAssistant =
+    !!conversation &&
+    (conversationEnrichmentPending ||
+      enrichment.status === 'enriching' ||
+      (enrichment.status === 'complete' && !showFinalAnalysisMessage)) &&
+    messages.length > 0 &&
+    messages.some((msg) => msg.message_type === 'address_search') &&
+    !showFinalAnalysisMessage;
+
   const handleRename = () => {
     setShowRenameDialog(true);
   };
@@ -1209,12 +1222,7 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                 })}
               
               {/* Show loading message when enrichment is in progress */}
-              {conversation && 
-               ((conversation.enrichment_status === 'pending' || conversation.enrichment_status === 'in_progress') &&
-                enrichment.status === 'enriching') &&
-               messages.length > 0 &&
-               messages.some(msg => msg.message_type === 'address_search') &&
-               !showFinalAnalysisMessage && (
+              {shouldShowLoadingAssistant && (
                 <LoadingAssistantMessage 
                   enrichment={enrichment}
                   isMapRendered={artifactSync.isArtifactRendered('map')}

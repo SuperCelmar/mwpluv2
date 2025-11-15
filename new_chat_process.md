@@ -31,6 +31,11 @@ When coordinates are received during Step 1, a right panel slides in showing a m
 - Update map artifact state with zone geometry (multi-polygon)
 - MapCard component renders polygon overlay on existing map
 - Map now displays: address marker + zone polygon overlay
+- **Implementation details**:
+  - `lib/utils/mapGeometry.ts` normalizes both `Polygon` and `MultiPolygon` payloads into Leaflet-friendly coordinates (`geometryToLeafletPolygons`)
+  - `components/MapArtifact.tsx` now waits for `mapCreated === true` AND `markerRendered === true` before turning on `shouldRenderPolygon` so the overlay always appears after the base map + marker mount
+  - `buildBoundsFromPolygons` is used to animate `fitBounds` once the polygon finishes rendering so the camera frames the entire zone instead of staying zoomed on the marker
+  - `renderingStatus` remains `'pending'` until the overlay fires its `add` event, ensuring the progressive loading stages only advance once the polygon is actually visible
 
 ### 4. Step 2: Document Query Logic
 
