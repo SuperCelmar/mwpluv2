@@ -68,7 +68,9 @@ export async function logChatEvent(params: ChatEventParams): Promise<void> {
       ...metadata,
     };
 
+    // Try analytics.chat_events first, fallback to chat_events if schema not exposed
     const { error } = await supabase
+      .schema('analytics')
       .from('chat_events')
       .insert({
         conversation_id,

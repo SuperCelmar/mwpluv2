@@ -1,5 +1,41 @@
 # Changelog
 
+## 2025-11-15 - Webhook Thinking Message with Shimmer Effect & Enhanced Logging
+
+### Added
+- **ThinkingAssistantMessage component**: New component that displays "l'assistant réfléchit..." with shimmering effect next to the assistant logo
+  - Shows when sending a message to the webhook
+  - Uses the same assistant avatar/logo styling as other assistant messages
+  - Implements shimmer animation using `TextShimmer` component
+  - Appears immediately when `sendingMessage` state is true
+
+### Changed
+- **app/(app)/chat/[conversation_id]/page.tsx**: Replaced simple loading indicator with `ThinkingAssistantMessage` component
+  - Removed `Loader2` icon and plain text loading indicator
+  - Now shows proper assistant message bubble with shimmer effect
+  - Thinking message appears when sending to webhook and disappears when response is received
+  - Assistant message from webhook response is saved to database and displayed in place of thinking message
+
+- **app/api/chat/route.ts**: Enhanced webhook response parsing and logging
+  - Added comprehensive logging for webhook URL, request payload, and response data
+  - Improved response parsing to handle multiple response formats (JSON, plain text, nested objects)
+  - Now checks multiple possible response fields: `message`, `response`, `text`, `content`, `data.message`, `data.response`, `result.message`, `result.response`, and raw text
+  - Logs raw response text, content-type, and parsed JSON for debugging
+  - Helps diagnose issues when webhook returns unexpected response formats (e.g., "Workflow was started" status messages)
+
+### Technical Details
+- The thinking message appears when `sendingMessage` is true (set in `handleSendMessage`)
+- When webhook response is received, the assistant message is saved to database via `sendMessageMutation`
+- React Query invalidates the messages query, causing it to refetch and display the new assistant message
+- `sendingMessage` is set to false after mutation completes, causing thinking message to disappear
+- The new assistant message appears in the messages list, replacing the thinking message seamlessly
+- Webhook URL is correctly set to `https://n8n.automationdfy.com/webhook/mwplu/chat` (can be overridden via `N8N_WEBHOOK_URL` env var)
+
+### Files Modified
+- Added `components/ThinkingAssistantMessage.tsx` - New component for thinking state
+- Modified `app/(app)/chat/[conversation_id]/page.tsx` - Replaced loading indicator with ThinkingAssistantMessage
+- Modified `app/api/chat/route.ts` - Enhanced logging and response parsing
+
 ## 2025-01-XX - Fix Initial Address Message Persistence
 
 ### Fixed

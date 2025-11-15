@@ -417,10 +417,11 @@ const PromptInputActions: React.FC<PromptInputActionsProps> = ({ children, class
   </div>
 );
 
-interface PromptInputActionProps extends React.ComponentProps<typeof Tooltip> {
+interface PromptInputActionProps extends Omit<React.ComponentProps<typeof Tooltip>, 'className'> {
   tooltip: React.ReactNode;
   children: React.ReactNode;
   side?: "top" | "bottom" | "left" | "right";
+  className?: string;
 }
 const PromptInputAction: React.FC<PromptInputActionProps> = ({
   tooltip,
@@ -432,7 +433,7 @@ const PromptInputAction: React.FC<PromptInputActionProps> = ({
   const { disabled } = usePromptInput();
   return (
     <Tooltip {...props}>
-      <TooltipTrigger asChild disabled={disabled}>
+      <TooltipTrigger asChild>
         {children}
       </TooltipTrigger>
       <TooltipContent side={side} className={className}>
@@ -875,23 +876,40 @@ export const PromptInputBox = React.forwardRef<HTMLDivElement, PromptInputBoxPro
             }
           >
             <Button
+              type="button"
               variant="default"
               size="icon"
               className={cn(
-                "h-8 w-8 rounded-full transition-all duration-200",
+                "h-8 w-8 rounded-full transition-all duration-200 !flex !items-center !justify-center",
                 isRecording
                   ? "bg-transparent hover:bg-accent text-destructive hover:text-destructive/80"
                   : hasContent
                   ? "bg-primary hover:bg-primary/90 text-primary-foreground"
                   : "bg-transparent hover:bg-accent text-muted-foreground hover:text-foreground"
               )}
-              onClick={() => {
+              style={{ 
+                pointerEvents: 'auto', 
+                zIndex: 10,
+                minWidth: '32px',
+                minHeight: '32px',
+                display: 'flex',
+                visibility: 'visible',
+                opacity: 1,
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
                 if (disabled && !isRecording) {
                   return;
                 }
-                if (isRecording) setIsRecording(false);
-                else if (hasContent) handleSubmit();
-                else setIsRecording(true);
+                if (isRecording) {
+                  setIsRecording(false);
+                } else if (hasContent) {
+                  handleSubmit();
+                } else {
+                  setIsRecording(true);
+                }
               }}
               disabled={(disabled && !isRecording) || (isLoading && !hasContent)}
               title={disabled && disabledTooltip ? disabledTooltip : undefined}

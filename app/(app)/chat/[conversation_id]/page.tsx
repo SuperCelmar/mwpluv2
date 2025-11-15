@@ -11,13 +11,13 @@ import { useEnrichment } from './useEnrichment';
 import { ChatMessageBubble } from '@/components/ChatMessageBubble';
 import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2 } from 'lucide-react';
 import { ConversationBreadcrumb } from '@/components/ConversationBreadcrumb';
 import { RenameConversationDialog } from '@/components/RenameConversationDialog';
 import { DeleteConversationDialog } from '@/components/DeleteProjectDialog';
 import { LoadingAssistantMessage } from '@/components/LoadingAssistantMessage';
 import { AnalysisFoundMessage } from '@/components/AnalysisFoundMessage';
 import { ChatRightPanel } from '@/components/ChatRightPanel';
+import { ThinkingAssistantMessage } from '@/components/ThinkingAssistantMessage';
 import { useArtifactSync } from '@/lib/hooks/useArtifactSync';
 import { InlineArtifactCard } from '@/components/InlineArtifactCard';
 import { getArtifactId } from '@/lib/utils/artifactDetection';
@@ -899,7 +899,6 @@ export default function ChatConversationPage({ params }: { params: { conversatio
         }
 
         try {
-          console.log('[CHAT_MESSAGE] Calling chat API');
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -956,25 +955,31 @@ export default function ChatConversationPage({ params }: { params: { conversatio
           .eq('id', params.conversation_id);
       }
 
+      // Log analytics events (non-blocking - failures shouldn't prevent message send)
       if (userMessage) {
-          const analyticsDocumentId =
-            preferredDocumentId || getFirstDocumentId(researchContext?.documents_found);
+        const analyticsDocumentId =
+          preferredDocumentId || getFirstDocumentId(researchContext?.documents_found);
 
-        await logChatEvent({
+        // Fire and forget - don't await to avoid blocking message send
+        logChatEvent({
           conversation_id: params.conversation_id,
           message_id: userMessage.id,
           user_id: userId,
           document_id: analyticsDocumentId,
           user_query_length: content.length,
+        }).catch((err) => {
+          console.error('[CHAT_MESSAGE] Analytics logging failed (non-blocking):', err);
         });
 
         if (assistantMessage) {
-          await logChatEvent({
+          logChatEvent({
             conversation_id: params.conversation_id,
             message_id: assistantMessage.id,
             user_id: userId,
             document_id: analyticsDocumentId,
             ai_response_length: assistantMessage.message?.length || 0,
+          }).catch((err) => {
+            console.error('[CHAT_MESSAGE] Analytics logging failed (non-blocking):', err);
           });
         }
       }
@@ -997,19 +1002,14 @@ export default function ChatConversationPage({ params }: { params: { conversatio
   });
 
   const handleSendMessage = async (content: string, files?: File[]) => {
-    console.log('[CHAT_MESSAGE] handleSendMessage called with content length:', content.length);
-    
     if (!userId || !conversation || sendMessageMutation.isPending) {
-      console.log('[CHAT_MESSAGE] Send blocked:', { hasUserId: !!userId, hasConversation: !!conversation, isPending: sendMessageMutation.isPending });
       return;
     }
 
-    console.log('[CHAT_MESSAGE] Starting message send process');
     setSendingMessage(true);
 
     try {
       await sendMessageMutation.mutateAsync(content);
-      console.log('[CHAT_MESSAGE] Message send process completed successfully');
     } catch (error) {
       console.error('[CHAT_MESSAGE] Error sending message:', error);
       toast({
@@ -1230,12 +1230,9 @@ export default function ChatConversationPage({ params }: { params: { conversatio
                 />
               )}
 
-              {/* AI loading icon below first message */}
-              {sendingMessage && messages.length > 0 && (
-                <div className="flex items-center gap-2 text-gray-500 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">L&apos;assistant réfléchit...</span>
-                </div>
+              {/* Thinking assistant message when sending to webhook */}
+              {sendingMessage && (
+                <ThinkingAssistantMessage />
               )}
             </div>
           </ScrollArea>
